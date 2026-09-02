@@ -1,10 +1,36 @@
 // ==========================================
-// 1. ГЛОБАЛЬНІ ЗМІННІ ТА СТАН
+// 1. АВТОРИЗАЦІЯ ЗА ПАРОЛЕМ (PIN: 2304)
+// ==========================================
+function checkPassword() {
+    const input = document.getElementById("passInput");
+    if (!input) return;
+    
+    if (input.value === "2304") {
+        localStorage.setItem("isAuth", "true");
+        document.getElementById("authModal").style.display = "none";
+        document.getElementById("appContent").style.display = "block";
+    } else {
+        alert("Невірний пароль!");
+        input.value = "";
+    }
+}
+
+// Дозволяємо підтверджувати пароль клавішею Enter
+document.addEventListener("keypress", function(e) {
+    if (e.key === "Enter") {
+        const passInput = document.getElementById("passInput");
+        if (passInput && document.activeElement === passInput) {
+            checkPassword();
+        }
+    }
+});
+
+// ==========================================
+// 2. ГЛОБАЛЬНІ ЗМІННІ ТА СТАН
 // ==========================================
 let dbByDate = JSON.parse(localStorage.getItem("food_db_by_date")) || {};
 let currentDateStr = "";
 let searchQuery = "";
-let confirmationResultGlobal = null;
 
 // Початкові стандартні записи (на випадок порожньої бази)
 const initialPersonnel = [
@@ -35,111 +61,13 @@ const initialPersonnel = [
 ];
 
 // ==========================================
-// 2. АВТОРИЗАЦІЯ ЧЕРЕЗ ТЕЛЕФОН (FIREBASE AUTH)
-// ==========================================
-async function initPhoneAuth() {
-  try {
-    const {
-      getAuth,
-      RecaptchaVerifier,
-      signInWithPhoneNumber,
-      onAuthStateChanged,
-    } =
-      await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js");
-
-    // Перевіряємо чи ініціалізовано Firebase App у window
-    if (!window.firebaseApp) {
-      console.warn("Firebase App не ініціалізовано в window.firebaseApp");
-      return;
-    }
-
-    const auth = getAuth(window.firebaseApp);
-    window.firebaseAuth = auth;
-
-    // Створення reCAPTCHA
-    window.recaptchaVerifier = new RecaptchaVerifier(
-      auth,
-      "recaptcha-container",
-      {
-        size: "normal",
-        callback: () => {
-          console.log("reCAPTCHA успішно пройдено");
-        },
-      },
-    );
-
-    // Відстеження стану авторизації
-    onAuthStateChanged(auth, (user) => {
-      const authContainer = document.getElementById("authContainer");
-      const appContainer = document.getElementById("appContainer"); // Головний блок додатку
-
-      if (user) {
-        if (authContainer) authContainer.style.display = "none";
-        if (appContainer) appContainer.style.display = "block";
-        onDateChange(); // Завантажуємо дані після входу
-      } else {
-        if (authContainer) authContainer.style.display = "block";
-        if (appContainer) appContainer.style.display = "none";
-      }
-    });
-
-    // Прив'язуємо функції до window для виклику з HTML (onclick)
-    window.sendSMS = async function () {
-      const phoneInput = document.getElementById("phoneNumber");
-      const phoneNumber = phoneInput ? phoneInput.value.trim() : "";
-
-      if (!phoneNumber) {
-        alert("Будь ласка, введіть номер телефону!");
-        return;
-      }
-
-      try {
-        const confirmationResult = await signInWithPhoneNumber(
-          auth,
-          phoneNumber,
-          window.recaptchaVerifier,
-        );
-        confirmationResultGlobal = confirmationResult;
-
-        document.getElementById("phoneStep").style.display = "none";
-        document.getElementById("codeStep").style.display = "block";
-        alert("SMS з кодом підтвердження відправлено!");
-      } catch (error) {
-        console.error("Помилка відправки SMS:", error);
-        alert("Помилка відправки SMS: " + error.message);
-      }
-    };
-
-    window.verifyCode = async function () {
-      const codeInput = document.getElementById("smsCode");
-      const code = codeInput ? codeInput.value.trim() : "";
-
-      if (!code || !confirmationResultGlobal) {
-        alert("Введіть код з SMS!");
-        return;
-      }
-
-      try {
-        await confirmationResultGlobal.confirm(code);
-        alert("Авторизація успішна!");
-      } catch (error) {
-        console.error("Помилка перевірки коду:", error);
-        alert("Невірний SMS-код!");
-      }
-    };
-  } catch (err) {
-    console.error("Помилка ініціалізації Firebase Auth:", err);
-  }
-}
-
-// ==========================================
 // 3. РОБОТА З CLOUD FIRESTORE
 // ==========================================
 async function syncFromFirestore(dateStr) {
   if (!window.db) return false;
   try {
     const { doc, getDoc } =
-      await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js");
+      await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
     const docRef = doc(window.db, "meals", dateStr);
     const docSnap = await getDoc(docRef);
 
@@ -158,7 +86,7 @@ async function syncToFirestore(dateStr) {
   if (!window.db) return;
   try {
     const { doc, setDoc } =
-      await import("https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js");
+      await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
     const docRef = doc(window.db, "meals", dateStr);
     await setDoc(
       docRef,
@@ -174,17 +102,22 @@ async function syncToFirestore(dateStr) {
 }
 
 // ==========================================
-// 4. ІНІЦІАЛІЗАЦІЯ ДОДАТКА При ЗАВАНТАЖЕННІ
+// 4. ІНІЦІАЛІЗАЦІЯ ДОДАТКА ПРИ ЗАВАНТАЖЕННІ
 // ==========================================
 window.addEventListener("DOMContentLoaded", async () => {
+  // Перевірка стану авторизації
+  if (localStorage.getItem("isAuth") === "true") {
+      const modal = document.getElementById("authModal");
+      const app = document.getElementById("appContent");
+      if (modal) modal.style.display = "none";
+      if (app) app.style.display = "block";
+  }
+
   const today = new Date().toISOString().split("T")[0];
   const reportDateInput = document.getElementById("reportDate");
   if (reportDateInput) {
     reportDateInput.value = today;
   }
-
-  // Ініціалізація авторизації
-  await initPhoneAuth();
 
   // Спроба завантажити дані для поточного дня
   const loadedFromCloud = await syncFromFirestore(today);
@@ -224,15 +157,12 @@ async function onDateChange() {
   currentDateStr = getCurrentDate();
   if (!currentDateStr) return;
 
-  // Пробуємо отримати дані з Firestore при зміні дати
   await syncFromFirestore(currentDateStr);
 
-  // Якщо на обрану дату немає даних — створюємо новий список
   if (!dbByDate[currentDateStr]) {
     const dates = Object.keys(dbByDate).sort();
     if (dates.length > 0) {
       const lastDate = dates[dates.length - 1];
-      // Копіюємо список з попередньої дати, скидаючи харчування
       dbByDate[currentDateStr] = dbByDate[lastDate].map((p) => ({
         ...p,
         s: "Не зараховувати",
@@ -633,7 +563,7 @@ function fallbackDownload(content, filename) {
     URL.revokeObjectURL(url);
   }, 100);
 
-  alert("Файл збережено (через завантаження браузера)!");
+  alert("Файл збережено!");
 }
 
 function loadFromFile() {
@@ -654,13 +584,13 @@ function handleFileSelect(event) {
         saveLocal();
         await syncToFirestore(currentDateStr);
         onDateChange();
-        alert("Дані за всі дати успішно завантажено!");
+        alert("Дані успішно завантажено!");
       } else if (Array.isArray(loadedData)) {
         dbByDate[currentDateStr] = loadedData;
         saveLocal();
         await syncToFirestore(currentDateStr);
         renderTable();
-        alert(`Дані успішно завантажено на дату ${currentDateStr}!`);
+        alert(`Дані завантажено на дату ${currentDateStr}!`);
       } else {
         alert("Помилка: Некоректна структура JSON!");
       }

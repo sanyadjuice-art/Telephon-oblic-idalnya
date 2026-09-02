@@ -11,97 +11,111 @@
 </head>
 <body>
 
-    <!-- Шапка -->
-    <header class="header-container">
-        <div class="trident">🔱</div>
-        <h2>Облік харчування особового складу</h2>
-    </header>
+    <!-- Модальне вікно авторизації за паролем -->
+    <div id="authModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); display: flex; justify-content: center; align-items: center; z-index: 9999;">
+        <div style="background: #ffffff; padding: 30px 25px; border-radius: 12px; text-align: center; max-width: 340px; width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border-top: 5px solid #005BBB;">
+            <div style="font-size: 36px; margin-bottom: 10px;">🔒</div>
+            <h3 style="margin: 0 0 8px 0; color: #1a2530; font-size: 20px;">Вхід у систему</h3>
+            <p style="font-size: 13px; color: #64748b; margin-bottom: 20px;">Введіть пароль доступу</p>
+            <input type="password" id="passInput" placeholder="Введіть пароль" style="width: 100%; padding: 12px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; margin-bottom: 15px; box-sizing: border-box; outline: none;">
+            <button onclick="checkPassword()" style="width: 100%; padding: 12px; background: #005BBB; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 15px; cursor: pointer; transition: background 0.2s;">Увійти</button>
+        </div>
+    </div>
 
-    <main>
-        <!-- Управління JSON файлом -->
-        <section class="card">
-            <label>📁 Управління файлом даних (data.json):</label>
-            <div class="file-controls">
-                <button class="btn btn-file" onclick="loadFromFile()">📂 Завантажити з data.json</button>
-                <button class="btn btn-file" onclick="saveDataToJson()">💾 Зберегти у data.json</button>
-            </div>
-            <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileSelect(event)">
-        </section>
+    <!-- Основний контент додатка -->
+    <div id="appContent" style="display: none;">
+        <!-- Шапка -->
+        <header class="header-container">
+            <div class="trident">🔱</div>
+            <h2>Облік харчування особового складу</h2>
+        </header>
 
-        <!-- Фільтри та дата -->
-        <section class="card">
-            <label for="reportDate">📅 Дата звіту:</label>
-            <input type="date" id="reportDate" onchange="onDateChange()">
+        <main>
+            <!-- Управління JSON файлом -->
+            <section class="card">
+                <label>📁 Управління файлом даних (data.json):</label>
+                <div class="file-controls">
+                    <button class="btn btn-file" onclick="loadFromFile()">📂 Завантажити з data.json</button>
+                    <button class="btn btn-file" onclick="saveDataToJson()">💾 Зберегти у data.json</button>
+                </div>
+                <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileSelect(event)">
+            </section>
 
-            <label for="unitFilter" style="margin-top: 6px;">🏢 Фільтр за підрозділом:</label>
-            <select id="unitFilter" onchange="renderTable()">
-                <option value="ALL">Всі підрозділи</option>
-            </select>
-        </section>
+            <!-- Фільтри та дата -->
+            <section class="card">
+                <label for="reportDate">📅 Дата звіту:</label>
+                <input type="date" id="reportDate" onchange="onDateChange()">
 
-        <!-- Пошук -->
-        <button class="btn-search" onclick="promptSearch()">🔍 Знайти за прізвищем</button>
-        <button class="btn-reset" id="resetSearchBtn" onclick="resetSearch()">Скинути пошук (показати всіх)</button>
+                <label for="unitFilter" style="margin-top: 6px;">🏢 Фільтр за підрозділом:</label>
+                <select id="unitFilter" onchange="renderTable()">
+                    <option value="ALL">Всі підрозділи</option>
+                </select>
+            </section>
 
-        <!-- Форма додавання / редагування -->
-        <section class="card add-box" id="formBox">
-            <div class="collapsible-header" onclick="toggleForm()">
-                <span id="formTitle">➕ Додати нового військовослужбовця</span>
-                <span class="icon" id="toggleIcon">➕</span>
-            </div>
-            
-            <div class="form-content" id="formContent">
-                <input type="hidden" id="editIndex" value="-1">
+            <!-- Пошук -->
+            <button class="btn-search" onclick="promptSearch()">🔍 Знайти за прізвищем</button>
+            <button class="btn-reset" id="resetSearchBtn" onclick="resetSearch()">Скинути пошук (показати всіх)</button>
+
+            <!-- Форма додавання / редагування -->
+            <section class="card add-box" id="formBox">
+                <div class="collapsible-header" onclick="toggleForm()">
+                    <span id="formTitle">➕ Додати нового військовослужбовця</span>
+                    <span class="icon" id="toggleIcon">➕</span>
+                </div>
                 
-                <label for="newRank">Звання:</label>
-                <input type="text" id="newRank" list="ranksList" placeholder="Почніть вводити або оберіть...">
-                <datalist id="ranksList"></datalist>
+                <div class="form-content" id="formContent">
+                    <input type="hidden" id="editIndex" value="-1">
+                    
+                    <label for="newRank">Звання:</label>
+                    <input type="text" id="newRank" list="ranksList" placeholder="Почніть вводити або оберіть...">
+                    <datalist id="ranksList"></datalist>
 
-                <label for="newName">Прізвище та ініціали:</label>
-                <input type="text" id="newName" placeholder="напр. Іваненко І.І.">
+                    <label for="newName">Прізвище та ініціали:</label>
+                    <input type="text" id="newName" placeholder="напр. Іваненко І.І.">
 
-                <label for="newUnit">Підрозділ:</label>
-                <input type="text" id="newUnit" list="unitsList" placeholder="Почніть вводити або оберіть...">
-                <datalist id="unitsList"></datalist>
+                    <label for="newUnit">Підрозділ:</label>
+                    <input type="text" id="newUnit" list="unitsList" placeholder="Почніть вводити або оберіть...">
+                    <datalist id="unitsList"></datalist>
 
-                <button class="btn btn-primary" id="saveBtn" onclick="savePerson()" style="margin-top: 6px;">Додати до списку</button>
-                <button class="btn btn-secondary" id="cancelBtn" onclick="resetForm()" style="display: none;">Скасувати редагування</button>
-            </div>
-        </section>
+                    <button class="btn btn-primary" id="saveBtn" onclick="savePerson()" style="margin-top: 6px;">Додати до списку</button>
+                    <button class="btn btn-secondary" id="cancelBtn" onclick="resetForm()" style="display: none;">Скасувати редагування</button>
+                </div>
+            </section>
 
-        <!-- Таблиця обліку -->
-        <section class="card">
-            <div class="table-responsive">
-                <table id="foodTable">
-                    <thead>
-                        <tr>
-                            <th>№</th>
-                            <th>Звання</th>
-                            <th>Прізвище</th>
-                            <th>Підрозділ</th>
-                            <th style="width: 100px;">Сніданок</th>
-                            <th style="width: 100px;">Обід</th>
-                            <th style="width: 100px;">Вечеря</th>
-                            <th>Дії</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody">
-                        <!-- Динамічні дані -->
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <td colspan="4" style="text-align: right; padding-right: 10px;">Всього зараховано:</td>
-                            <td id="totalBreakfast" class="meal-count">0</td>
-                            <td id="totalLunch" class="meal-count">0</td>
-                            <td id="totalDinner" class="meal-count">0</td>
-                            <td></td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-            <button class="btn" onclick="exportToExcel()">📥 Сформувати звіт Excel</button>
-        </section>
-    </main>
+            <!-- Таблиця обліку -->
+            <section class="card">
+                <div class="table-responsive">
+                    <table id="foodTable">
+                        <thead>
+                            <tr>
+                                <th>№</th>
+                                <th>Звання</th>
+                                <th>Прізвище</th>
+                                <th>Підрозділ</th>
+                                <th style="width: 100px;">Сніданок</th>
+                                <th style="width: 100px;">Обід</th>
+                                <th style="width: 100px;">Вечеря</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <!-- Динамічні дані -->
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" style="text-align: right; padding-right: 10px;">Всього зараховано:</td>
+                                <td id="totalBreakfast" class="meal-count">0</td>
+                                <td id="totalLunch" class="meal-count">0</td>
+                                <td id="totalDinner" class="meal-count">0</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <button class="btn" onclick="exportToExcel()">📥 Сформувати звіт Excel</button>
+            </section>
+        </main>
+    </div>
 
     <!-- Підключення Firebase SDK (ES-модулі) -->
     <script type="module">
@@ -118,7 +132,6 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        // Експортуємо db у глобальну область для script.js
         window.db = getFirestore(app);
     </script>
 
