@@ -2,27 +2,33 @@
 // 1. АВТОРИЗАЦІЯ ЗА ПАРОЛЕМ (PIN: 2304)
 // ==========================================
 function checkPassword() {
-    const input = document.getElementById("passInput");
-    if (!input) return;
-    
-    if (input.value === "2304") {
-        localStorage.setItem("isAuth", "true");
-        document.getElementById("authModal").style.display = "none";
-        document.getElementById("appContent").style.display = "block";
-    } else {
-        alert("Невірний пароль!");
-        input.value = "";
-    }
+  const input = document.getElementById("passInput");
+  if (!input) return;
+
+  // Trim прибирає випадкові пробіли, якщо вони скопіювалися
+  const val = input.value.trim();
+
+  if (val === "2304") {
+    localStorage.setItem("isAuth", "true");
+    const modal = document.getElementById("authModal");
+    const app = document.getElementById("appContent");
+    if (modal) modal.style.display = "none";
+    if (app) app.style.display = "block";
+  } else {
+    alert("Невірний пароль!");
+    input.value = "";
+    input.focus();
+  }
 }
 
 // Дозволяємо підтверджувати пароль клавішею Enter
-document.addEventListener("keypress", function(e) {
-    if (e.key === "Enter") {
-        const passInput = document.getElementById("passInput");
-        if (passInput && document.activeElement === passInput) {
-            checkPassword();
-        }
+document.addEventListener("keypress", function (e) {
+  if (e.key === "Enter") {
+    const passInput = document.getElementById("passInput");
+    if (passInput && document.activeElement === passInput) {
+      checkPassword();
     }
+  }
 });
 
 // ==========================================
@@ -107,10 +113,10 @@ async function syncToFirestore(dateStr) {
 window.addEventListener("DOMContentLoaded", async () => {
   // Перевірка стану авторизації
   if (localStorage.getItem("isAuth") === "true") {
-      const modal = document.getElementById("authModal");
-      const app = document.getElementById("appContent");
-      if (modal) modal.style.display = "none";
-      if (app) app.style.display = "block";
+    const modal = document.getElementById("authModal");
+    const app = document.getElementById("appContent");
+    if (modal) modal.style.display = "none";
+    if (app) app.style.display = "block";
   }
 
   const today = new Date().toISOString().split("T")[0];
