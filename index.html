@@ -1,176 +1,34 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Облік харчування особового складу</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css">
-    <!-- Бібліотека SheetJS для Excel -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Облік харчування особового складу</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <!-- Невидимий контейнер reCAPTCHA -->
+  <div id="auth-container">
+    <h2>Вхід у систему</h2>
+    <p>Введіть номер телефону для отримання SMS</p>
+    <input type="tel" id="phone-number" placeholder="+380XXXXXXXXX" value="+380">
     <div id="recaptcha-container"></div>
+    <button id="send-code-btn">Отримати SMS-код</button>
+  </div>
 
-    <!-- Модальне вікно авторизації за телефоном -->
-    <div id="authModal" class="auth-modal-overlay">
-        <div class="auth-card">
-            
-            <!-- Крок 1: Введення номера телефону -->
-            <div id="stepPhone">
-                <div class="auth-icon">📱</div>
-                <h3>Вхід у систему</h3>
-                <p class="auth-desc">Введіть номер телефону для отримання SMS</p>
-                <input type="tel" id="phoneNumber" placeholder="+380XXXXXXXXX" value="+380">
-                <button class="btn-auth" onclick="sendSMS()">Отримати SMS-код</button>
-            </div>
+  <div id="verification-container" style="display: none;">
+    <h2>Підтвердження</h2>
+    <input type="text" id="verification-code" placeholder="Код з SMS">
+    <button id="verify-code-btn">Підтвердити</button>
+  </div>
 
-            <!-- Крок 2: Введення SMS-коду -->
-            <div id="stepCode" style="display: none;">
-                <div class="auth-icon">💬</div>
-                <h3>Підтвердження</h3>
-                <p class="auth-desc">Введіть 6-значний код з SMS</p>
-                <input type="text" id="smsCode" placeholder="123456" maxlength="6">
-                <button class="btn-auth btn-success" onclick="verifyCode()">Підтвердити код</button>
-                <button class="btn-link" onclick="resetAuthSteps()">← Змінити номер</button>
-            </div>
+  <!-- Firebase App & Auth SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
-            <!-- Крок 3: Перший вхід (Реєстрація ПІБ) -->
-            <div id="stepProfile" style="display: none;">
-                <div class="auth-icon">👤</div>
-                <h3>Реєстрація профілю</h3>
-                <p class="auth-desc">Заповніть дані для внесення в базу військового обліку</p>
-                
-                <label style="text-align: left; display: block; font-size: 12px; margin-bottom: 4px; color: #475569;">Звання:</label>
-                <input type="text" id="userRank" list="authRanksList" placeholder="напр. майор">
-                <datalist id="authRanksList"></datalist>
-
-                <label style="text-align: left; display: block; font-size: 12px; margin-bottom: 4px; color: #475569;">Прізвище та ініціали:</label>
-                <input type="text" id="userFullName" placeholder="напр. Боженко О.О.">
-
-                <label style="text-align: left; display: block; font-size: 12px; margin-bottom: 4px; color: #475569;">Підрозділ:</label>
-                <input type="text" id="userUnit" list="authUnitsList" placeholder="напр. 23 загін МО">
-                <datalist id="authUnitsList"></datalist>
-
-                <button class="btn-auth" onclick="saveProfile()">Зберегти та увійти</button>
-            </div>
-
-        </div>
-    </div>
-
-    <!-- Основний контент додатка -->
-    <div id="appContent" style="display: none;">
-        <!-- Шапка -->
-        <header class="header-container">
-            <div class="trident">🔱</div>
-            <h2>Облік харчування особового складу</h2>
-            <div id="userInfoHeader" class="user-info-header">
-                <span id="headerUserName">...</span>
-                <button onclick="logout()" class="btn-logout" title="Вийти">Вихід</button>
-            </div>
-        </header>
-
-        <main>
-            <!-- Панель онлайн-користувачів (Для Адміна) -->
-            <section class="card" id="onlineUsersCard">
-                <div class="collapsible-header" onclick="toggleOnlinePanel()">
-                    <span>🟢 Користувачі онлайн (<span id="onlineCount">0</span>)</span>
-                    <span class="icon" id="onlineToggleIcon">➕</span>
-                </div>
-                <div id="onlineUsersList" style="display: none; margin-top: 10px;">
-                    <!-- Список користувачів з їхніми статусами -->
-                </div>
-            </section>
-
-            <!-- Управління JSON файлом -->
-            <section class="card">
-                <label>📁 Управління файлом даних (data.json):</label>
-                <div class="file-controls">
-                    <button class="btn btn-file" onclick="loadFromFile()">📂 Завантажити з data.json</button>
-                    <button class="btn btn-file" onclick="saveDataToJson()">💾 Зберегти у data.json</button>
-                </div>
-                <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileSelect(event)">
-            </section>
-
-            <!-- Фільтри та дата -->
-            <section class="card">
-                <label for="reportDate">📅 Дата звіту:</label>
-                <input type="date" id="reportDate" onchange="onDateChange()">
-
-                <label for="unitFilter" style="margin-top: 6px;">🏢 Фільтр за підрозділом:</label>
-                <select id="unitFilter" onchange="renderTable()">
-                    <option value="ALL">Всі підрозділи</option>
-                </select>
-            </section>
-
-            <!-- Пошук -->
-            <button class="btn-search" onclick="promptSearch()">🔍 Знайти за прізвищем</button>
-            <button class="btn-reset" id="resetSearchBtn" onclick="resetSearch()">Скинути пошук (показати всіх)</button>
-
-            <!-- Форма додавання / редагування -->
-            <section class="card add-box" id="formBox">
-                <div class="collapsible-header" onclick="toggleForm()">
-                    <span id="formTitle">➕ Додати нового військовослужбовця</span>
-                    <span class="icon" id="toggleIcon">➕</span>
-                </div>
-                
-                <div class="form-content" id="formContent">
-                    <input type="hidden" id="editIndex" value="-1">
-                    
-                    <label for="newRank">Звання:</label>
-                    <input type="text" id="newRank" list="ranksList" placeholder="Почніть вводити або оберіть...">
-                    <datalist id="ranksList"></datalist>
-
-                    <label for="newName">Прізвище та ініціали:</label>
-                    <input type="text" id="newName" placeholder="напр. Іваненко І.І.">
-
-                    <label for="newUnit">Підрозділ:</label>
-                    <input type="text" id="newUnit" list="unitsList" placeholder="Почніть вводити або оберіть...">
-                    <datalist id="unitsList"></datalist>
-
-                    <button class="btn btn-primary" id="saveBtn" onclick="savePerson()" style="margin-top: 6px;">Додати до списку</button>
-                    <button class="btn btn-secondary" id="cancelBtn" onclick="resetForm()" style="display: none;">Скасувати редагування</button>
-                </div>
-            </section>
-
-            <!-- Таблиця обліку -->
-            <section class="card">
-                <div class="table-responsive">
-                    <table id="foodTable">
-                        <thead>
-                            <tr>
-                                <th>№</th>
-                                <th>Звання</th>
-                                <th>Прізвище</th>
-                                <th>Підрозділ</th>
-                                <th style="width: 100px;">Сніданок</th>
-                                <th style="width: 100px;">Обід</th>
-                                <th style="width: 100px;">Вечеря</th>
-                                <th>Дії</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableBody">
-                            <!-- Динамічні дані -->
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="4" style="text-align: right; padding-right: 10px;">Всього зараховано:</td>
-                                <td id="totalBreakfast" class="meal-count">0</td>
-                                <td id="totalLunch" class="meal-count">0</td>
-                                <td id="totalDinner" class="meal-count">0</td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-                <button class="btn" onclick="exportToExcel()">📥 Сформувати звіт Excel</button>
-            </section>
-        </main>
-    </div>
-
-    <!-- Основна логіка застосунку з модулями Firebase -->
-    <script type="module" src="script.js"></script>
+  <!-- Основний скрипт логіки -->
+  <script src="app.js"></script>
 </body>
 </html>
