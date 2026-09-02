@@ -11,14 +11,52 @@
 </head>
 <body>
 
-    <!-- Модальне вікно авторизації за паролем -->
-    <div id="authModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); display: flex; justify-content: center; align-items: center; z-index: 9999;">
-        <div style="background: #ffffff; padding: 30px 25px; border-radius: 12px; text-align: center; max-width: 340px; width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border-top: 5px solid #005BBB;">
-            <div style="font-size: 36px; margin-bottom: 10px;">🔒</div>
-            <h3 style="margin: 0 0 8px 0; color: #1a2530; font-size: 20px;">Вхід у систему</h3>
-            <p style="font-size: 13px; color: #64748b; margin-bottom: 20px;">Введіть пароль доступу</p>
-            <input type="password" id="passInput" placeholder="Введіть пароль" style="width: 100%; padding: 12px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 8px; text-align: center; margin-bottom: 15px; box-sizing: border-box; outline: none;">
-            <button onclick="checkPassword()" style="width: 100%; padding: 12px; background: #005BBB; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 15px; cursor: pointer; transition: background 0.2s;">Увійти</button>
+    <!-- Невидимий контейнер reCAPTCHA -->
+    <div id="recaptcha-container"></div>
+
+    <!-- Модальне вікно авторизації за телефоном -->
+    <div id="authModal" class="auth-modal-overlay">
+        <div class="auth-card">
+            
+            <!-- Крок 1: Введення номера телефону -->
+            <div id="stepPhone">
+                <div class="auth-icon">📱</div>
+                <h3>Вхід у систему</h3>
+                <p class="auth-desc">Введіть номер телефону для отримання SMS</p>
+                <input type="tel" id="phoneNumber" placeholder="+380XXXXXXXXX" value="+380">
+                <button class="btn-auth" onclick="sendSMS()">Отримати SMS-код</button>
+            </div>
+
+            <!-- Крок 2: Введення SMS-коду -->
+            <div id="stepCode" style="display: none;">
+                <div class="auth-icon">💬</div>
+                <h3>Підтвердження</h3>
+                <p class="auth-desc">Введіть 6-значний код з SMS</p>
+                <input type="text" id="smsCode" placeholder="123456" maxlength="6">
+                <button class="btn-auth btn-success" onclick="verifyCode()">Підтвердити код</button>
+                <button class="btn-link" onclick="resetAuthSteps()">← Змінити номер</button>
+            </div>
+
+            <!-- Крок 3: Перший вхід (Реєстрація ПІБ) -->
+            <div id="stepProfile" style="display: none;">
+                <div class="auth-icon">👤</div>
+                <h3>Реєстрація профілю</h3>
+                <p class="auth-desc">Заповніть дані для внесення в базу військового обліку</p>
+                
+                <label style="text-align: left; display: block; font-size: 12px; margin-bottom: 4px; color: #475569;">Звання:</label>
+                <input type="text" id="userRank" list="authRanksList" placeholder="напр. майор">
+                <datalist id="authRanksList"></datalist>
+
+                <label style="text-align: left; display: block; font-size: 12px; margin-bottom: 4px; color: #475569;">Прізвище та ініціали:</label>
+                <input type="text" id="userFullName" placeholder="напр. Боженко О.О.">
+
+                <label style="text-align: left; display: block; font-size: 12px; margin-bottom: 4px; color: #475569;">Підрозділ:</label>
+                <input type="text" id="userUnit" list="authUnitsList" placeholder="напр. 23 загін МО">
+                <datalist id="authUnitsList"></datalist>
+
+                <button class="btn-auth" onclick="saveProfile()">Зберегти та увійти</button>
+            </div>
+
         </div>
     </div>
 
@@ -28,9 +66,24 @@
         <header class="header-container">
             <div class="trident">🔱</div>
             <h2>Облік харчування особового складу</h2>
+            <div id="userInfoHeader" class="user-info-header">
+                <span id="headerUserName">...</span>
+                <button onclick="logout()" class="btn-logout" title="Вийти">Вихід</button>
+            </div>
         </header>
 
         <main>
+            <!-- Панель онлайн-користувачів (Для Адміна) -->
+            <section class="card" id="onlineUsersCard">
+                <div class="collapsible-header" onclick="toggleOnlinePanel()">
+                    <span>🟢 Користувачі онлайн (<span id="onlineCount">0</span>)</span>
+                    <span class="icon" id="onlineToggleIcon">➕</span>
+                </div>
+                <div id="onlineUsersList" style="display: none; margin-top: 10px;">
+                    <!-- Список користувачів з їхніми статусами -->
+                </div>
+            </section>
+
             <!-- Управління JSON файлом -->
             <section class="card">
                 <label>📁 Управління файлом даних (data.json):</label>
@@ -117,25 +170,7 @@
         </main>
     </div>
 
-    <!-- Підключення Firebase SDK (ES-модулі) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyAAnZnsJYbTKRPnzZFpc4Z0x2U_eEL7BFc",
-            authDomain: "telephon-oblic-idalnya.firebaseapp.com",
-            projectId: "telephon-oblic-idalnya",
-            storageBucket: "telephon-oblic-idalnya.firebasestorage.app",
-            messagingSenderId: "591688369928",
-            appId: "1:591688369928:web:89c0ef4ccdd474573s4ebd"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        window.db = getFirestore(app);
-    </script>
-
-    <!-- Основна логіка застосунку -->
-    <script src="script.js"></script>
+    <!-- Основна логіка застосунку з модулями Firebase -->
+    <script type="module" src="script.js"></script>
 </body>
 </html>

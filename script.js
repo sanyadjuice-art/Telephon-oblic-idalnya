@@ -1,44 +1,45 @@
-// ==========================================
-// 1. АВТОРИЗАЦІЯ ЗА ПАРОЛЕМ (PIN: 2304)
-// ==========================================
-function checkPassword() {
-  const input = document.getElementById("passInput");
-  if (!input) return;
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import {
+  getAuth,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  onAuthStateChanged,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  onSnapshot,
+  collection,
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  // Trim прибирає випадкові пробіли, якщо вони скопіювалися
-  const val = input.value.trim();
+// Конфігурація Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyAAnZnsJYbTKRPnzZFpc4Z0x2U_eEL7BFc",
+  authDomain: "telephon-oblic-idalnya.firebaseapp.com",
+  projectId: "telephon-oblic-idalnya",
+  storageBucket: "telephon-oblic-idalnya.firebasestorage.app",
+  messagingSenderId: "591688369928",
+  appId: "1:591688369928:web:89c0ef4ccdd474573s4ebd",
+};
 
-  if (val === "2304") {
-    localStorage.setItem("isAuth", "true");
-    const modal = document.getElementById("authModal");
-    const app = document.getElementById("appContent");
-    if (modal) modal.style.display = "none";
-    if (app) app.style.display = "block";
-  } else {
-    alert("Невірний пароль!");
-    input.value = "";
-    input.focus();
-  }
-}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+window.db = db;
 
-// Дозволяємо підтверджувати пароль клавішею Enter
-document.addEventListener("keypress", function (e) {
-  if (e.key === "Enter") {
-    const passInput = document.getElementById("passInput");
-    if (passInput && document.activeElement === passInput) {
-      checkPassword();
-    }
-  }
-});
-
-// ==========================================
-// 2. ГЛОБАЛЬНІ ЗМІННІ ТА СТАН
-// ==========================================
+// Глобальний стан
+let confirmationResultGlobal = null;
+let currentUser = null;
+let currentUserProfile = null;
 let dbByDate = JSON.parse(localStorage.getItem("food_db_by_date")) || {};
 let currentDateStr = "";
 let searchQuery = "";
 
-// Початкові стандартні записи (на випадок порожньої бази)
 const initialPersonnel = [
   {
     rank: "солдат",
@@ -56,27 +57,242 @@ const initialPersonnel = [
     o: "Не зараховувати",
     v: "Не зараховувати",
   },
-  {
-    rank: "сержант",
-    name: "Сидоренко С.С.",
-    unit: "Штаб",
-    s: "Не зараховувати",
-    o: "Не зараховувати",
-    v: "Не зараховувати",
-  },
 ];
 
 // ==========================================
-// 3. РОБОТА З CLOUD FIRESTORE
+// 1. АВТОРИЗАЦІЯ PHONE AUTH ТА ПРОФІЛЬ
 // ==========================================
-async function syncFromFirestore(dateStr) {
-  if (!window.db) return false;
-  try {
-    const { doc, getDoc } =
-      await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-    const docRef = doc(window.db, "meals", dateStr);
-    const docSnap = await getDoc(docRef);
 
+window.addEventListener("DOMContentLoaded", () => {
+  try {
+    window.recaptchaVerifier = new RecaptchaVerifier(
+      auth,
+      "recaptcha-container",
+      {
+        size: "invisible",
+      },
+    );
+  } catch (e) {
+    console.error("Помилка ініціалізації reCAPTCHA:", e);
+  }
+});
+
+window.sendSMS = async function () {
+  const phoneInput = document.getElementById("phoneNumber");
+  const phone = phoneInput ? phoneInput.value.trim() : "";
+
+  if (!phone.startsWith("+380") || phone.length < 13) {
+    alert("Введіть коректний номер у форматі +380XXXXXXXXX");
+    return;
+  }
+
+  try {
+    const appVerifier = window.recaptchaVerifier;
+    confirmationResultGlobal = await signInWithPhoneNumber(
+      auth,
+      phone,
+      appVerifier,
+    );
+    document.getElementById("stepPhone").style.display = "none";
+    document.getElementById("stepCode").style.display = "block";
+  } catch (error) {
+    console.error("Помилка відправки SMS:", error);
+    alert("Помилка відправки SMS: " + error.message);
+  }
+};
+
+window.verifyCode = async function () {
+  const codeInput = document.getElementById("smsCode");
+  const code = codeInput ? codeInput.value.trim() : "";
+  if (!code || code.length !== 6) {
+    alert("Введіть 6-значний код з SMS!");
+    return;
+  }
+
+  try {
+    const result = await confirmationResultGlobal.confirm(code);
+    currentUser = result.user;
+    await checkUserProfile(currentUser);
+  } catch (error) {
+    console.error("Помилка підтвердження коду:", error);
+    alert("Невірний код з SMS!");
+  }
+};
+
+window.resetAuthSteps = function () {
+  document.getElementById("stepPhone").style.display = "block";
+  document.getElementById("stepCode").style.display = "none";
+  document.getElementById("stepProfile").style.display = "none";
+};
+
+async function checkUserProfile(user) {
+  const userDocRef = doc(db, "users", user.uid);
+  const userDoc = await getDoc(userDocRef);
+
+  if (userDoc.exists() && userDoc.data().fullName) {
+    currentUserProfile = userDoc.data();
+    document.getElementById("authModal").style.display = "none";
+    document.getElementById("appContent").style.display = "block";
+    document.getElementById("headerUserName").innerText =
+      `${currentUserProfile.rank || ""} ${currentUserProfile.fullName}`;
+
+    await setUserOnlineStatus(user.uid, true);
+    initAppData();
+  } else {
+    document.getElementById("stepPhone").style.display = "none";
+    document.getElementById("stepCode").style.display = "none";
+    document.getElementById("stepProfile").style.display = "block";
+  }
+}
+
+window.saveProfile = async function () {
+  const rank = document.getElementById("userRank").value.trim();
+  const fullName = document.getElementById("userFullName").value.trim();
+  const unit = document.getElementById("userUnit").value.trim();
+
+  if (!fullName) {
+    alert("Будь ласка, вкажіть Прізвище та Ініціали!");
+    return;
+  }
+
+  if (currentUser) {
+    currentUserProfile = {
+      phone: currentUser.phoneNumber,
+      rank: rank || "солдат",
+      fullName: fullName,
+      unit: unit || "-",
+      role: "client",
+      isOnline: true,
+      lastSeen: new Date().toISOString(),
+    };
+
+    await setDoc(doc(db, "users", currentUser.uid), currentUserProfile, {
+      merge: true,
+    });
+
+    document.getElementById("authModal").style.display = "none";
+    document.getElementById("appContent").style.display = "block";
+    document.getElementById("headerUserName").innerText =
+      `${currentUserProfile.rank} ${currentUserProfile.fullName}`;
+
+    await setUserOnlineStatus(currentUser.uid, true);
+    initAppData();
+  }
+};
+
+window.logout = async function () {
+  if (currentUser) {
+    await setUserOnlineStatus(currentUser.uid, false);
+  }
+  await signOut(auth);
+  location.reload();
+};
+
+// ==========================================
+// 2. ОНЛАЙН-СТАТУС ТА МОНІТОРИНГ
+// ==========================================
+
+async function setUserOnlineStatus(uid, isOnline) {
+  try {
+    const userRef = doc(db, "users", uid);
+    await updateDoc(userRef, {
+      isOnline: isOnline,
+      lastSeen: serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("Помилка оновлення онлайн-статусу:", e);
+  }
+}
+
+window.addEventListener("beforeunload", () => {
+  if (currentUser) {
+    setUserOnlineStatus(currentUser.uid, false);
+  }
+});
+
+function subscribeToOnlineUsers() {
+  const usersRef = collection(db, "users");
+  onSnapshot(usersRef, (snapshot) => {
+    const listEl = document.getElementById("onlineUsersList");
+    const countEl = document.getElementById("onlineCount");
+    if (!listEl) return;
+
+    listEl.innerHTML = "";
+    let onlineCount = 0;
+
+    snapshot.forEach((docSnap) => {
+      const userData = docSnap.data();
+      const isOnline = userData.isOnline === true;
+      if (isOnline) onlineCount++;
+
+      const statusDot = isOnline ? "🟢" : "🔴";
+      const userRow = document.createElement("div");
+      userRow.className = "online-user-item";
+      userRow.innerHTML = `
+                <span>${statusDot} <strong>${userData.rank || ""} ${userData.fullName || "Користувач"}</strong> (${userData.unit || "-"})</span>
+                <span style="font-size: 11px; color: #64748b;">${userData.phone || ""}</span>
+            `;
+      listEl.appendChild(userRow);
+    });
+
+    if (countEl) countEl.innerText = onlineCount;
+  });
+}
+
+window.toggleOnlinePanel = function () {
+  const list = document.getElementById("onlineUsersList");
+  const icon = document.getElementById("onlineToggleIcon");
+  if (!list) return;
+  if (list.style.display === "none") {
+    list.style.display = "block";
+    if (icon) icon.innerText = "➖";
+  } else {
+    list.style.display = "none";
+    if (icon) icon.innerText = "➕";
+  }
+};
+
+// Слухач стану авторизації Firebase
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    currentUser = user;
+    await checkUserProfile(user);
+    subscribeToOnlineUsers();
+  } else {
+    document.getElementById("authModal").style.display = "flex";
+    document.getElementById("appContent").style.display = "none";
+  }
+});
+
+// ==========================================
+// 3. РОБОТА З БАЗОЮ ТАБЛИЦІ (FIRESTORE & LOCAL)
+// ==========================================
+
+async function initAppData() {
+  const today = new Date().toISOString().split("T")[0];
+  const reportDateInput = document.getElementById("reportDate");
+  if (reportDateInput) reportDateInput.value = today;
+
+  const loadedFromCloud = await syncFromFirestore(today);
+  if (!loadedFromCloud) {
+    fetch("data.json")
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => {
+        if (typeof data === "object" && !Array.isArray(data)) dbByDate = data;
+        else if (Array.isArray(data)) dbByDate[today] = data;
+        saveLocal();
+        onDateChange();
+      })
+      .catch(() => onDateChange());
+  } else {
+    onDateChange();
+  }
+}
+
+async function syncFromFirestore(dateStr) {
+  try {
+    const docRef = doc(db, "meals", dateStr);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       dbByDate[dateStr] = docSnap.data().personnel || [];
       saveLocal();
@@ -89,11 +305,8 @@ async function syncFromFirestore(dateStr) {
 }
 
 async function syncToFirestore(dateStr) {
-  if (!window.db) return;
   try {
-    const { doc, setDoc } =
-      await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-    const docRef = doc(window.db, "meals", dateStr);
+    const docRef = doc(db, "meals", dateStr);
     await setDoc(
       docRef,
       {
@@ -107,59 +320,12 @@ async function syncToFirestore(dateStr) {
   }
 }
 
-// ==========================================
-// 4. ІНІЦІАЛІЗАЦІЯ ДОДАТКА ПРИ ЗАВАНТАЖЕННІ
-// ==========================================
-window.addEventListener("DOMContentLoaded", async () => {
-  // Перевірка стану авторизації
-  if (localStorage.getItem("isAuth") === "true") {
-    const modal = document.getElementById("authModal");
-    const app = document.getElementById("appContent");
-    if (modal) modal.style.display = "none";
-    if (app) app.style.display = "block";
-  }
-
-  const today = new Date().toISOString().split("T")[0];
-  const reportDateInput = document.getElementById("reportDate");
-  if (reportDateInput) {
-    reportDateInput.value = today;
-  }
-
-  // Спроба завантажити дані для поточного дня
-  const loadedFromCloud = await syncFromFirestore(today);
-
-  if (!loadedFromCloud) {
-    fetch("data.json")
-      .then((response) => {
-        if (response.ok) return response.json();
-        throw new Error("Файл data.json не знайдено");
-      })
-      .then((data) => {
-        if (typeof data === "object" && !Array.isArray(data)) {
-          dbByDate = data;
-        } else if (Array.isArray(data)) {
-          dbByDate[today] = data;
-        }
-        saveLocal();
-        onDateChange();
-      })
-      .catch(() => {
-        onDateChange();
-      });
-  } else {
-    onDateChange();
-  }
-});
-
-// ==========================================
-// 5. ОСНОВНА ЛОГІКА ТА ОБРОБКА ДАТИ
-// ==========================================
 function getCurrentDate() {
   const el = document.getElementById("reportDate");
   return el ? el.value : new Date().toISOString().split("T")[0];
 }
 
-async function onDateChange() {
+window.onDateChange = async function () {
   currentDateStr = getCurrentDate();
   if (!currentDateStr) return;
 
@@ -184,12 +350,11 @@ async function onDateChange() {
 
   updateUnitFilterOptions();
   renderTable();
-}
+};
 
 function getPersonnel() {
   return dbByDate[currentDateStr] || [];
 }
-
 function saveLocal() {
   localStorage.setItem("food_db_by_date", JSON.stringify(dbByDate));
 }
@@ -202,13 +367,9 @@ function sortPersonnel(arr) {
   });
 }
 
-// ==========================================
-// 6. ОНОВЛЕННЯ СПИСКІВ ТА ФІЛЬТРІВ (DATALISTS)
-// ==========================================
 function updateUnitFilterOptions() {
   const unitSelect = document.getElementById("unitFilter");
   if (!unitSelect) return;
-
   const selectedVal = unitSelect.value;
   const list = getPersonnel();
   const unitsSet = new Set();
@@ -224,19 +385,15 @@ function updateUnitFilterOptions() {
       unitSelect.innerHTML += `<option value="${u}">${u}</option>`;
     });
 
-  if (Array.from(unitsSet).includes(selectedVal)) {
+  if (Array.from(unitsSet).includes(selectedVal))
     unitSelect.value = selectedVal;
-  } else {
-    unitSelect.value = "ALL";
-  }
+  else unitSelect.value = "ALL";
 }
 
 function updateDatalists() {
   const ranksSet = new Set();
   const unitsSet = new Set();
-  const list = getPersonnel();
-
-  list.forEach((p) => {
+  getPersonnel().forEach((p) => {
     if (p.rank) ranksSet.add(p.rank);
     if (p.unit && p.unit !== "-") unitsSet.add(p.unit);
   });
@@ -244,54 +401,40 @@ function updateDatalists() {
   const defaultRanks = [
     "солдат",
     "старший солдат",
-    "молодший сержант",
     "сержант",
-    "старший сержант",
-    "головний сержант",
-    "штаб-сержант",
-    "майстер-сержант",
-    "молодший лейтенант",
     "лейтенант",
-    "старший лейтенант",
     "капітан",
     "майор",
     "підполковник",
-    "полковник",
   ];
   defaultRanks.forEach((r) => ranksSet.add(r));
 
-  const ranksList = document.getElementById("ranksList");
-  if (ranksList) {
-    ranksList.innerHTML = "";
-    Array.from(ranksSet)
-      .sort()
-      .forEach((r) => {
-        ranksList.innerHTML += `<option value="${r}">`;
-      });
-  }
+  const fillList = (id, set) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.innerHTML = "";
+      Array.from(set)
+        .sort()
+        .forEach((item) => (el.innerHTML += `<option value="${item}">`));
+    }
+  };
 
-  const unitsList = document.getElementById("unitsList");
-  if (unitsList) {
-    unitsList.innerHTML = "";
-    Array.from(unitsSet)
-      .sort()
-      .forEach((u) => {
-        unitsList.innerHTML += `<option value="${u}">`;
-      });
-  }
+  fillList("ranksList", ranksSet);
+  fillList("unitsList", unitsSet);
+  fillList("authRanksList", ranksSet);
+  fillList("authUnitsList", unitsSet);
 }
 
 // ==========================================
-// 7. ПОШУК ТА ІНТЕРФЕЙС
+// 4. ІНТЕРФЕЙС ТА ТАБЛИЦЯ
 // ==========================================
-function toggleForm(forceOpen = false) {
+
+window.toggleForm = function (forceOpen = false) {
   const content = document.getElementById("formContent");
   const icon = document.getElementById("toggleIcon");
   if (!content) return;
-
   const isHidden =
     content.style.display === "none" || content.style.display === "";
-
   if (isHidden || forceOpen) {
     content.style.display = "block";
     if (icon) icon.innerText = "➖";
@@ -299,9 +442,9 @@ function toggleForm(forceOpen = false) {
     content.style.display = "none";
     if (icon) icon.innerText = "➕";
   }
-}
+};
 
-function promptSearch() {
+window.promptSearch = function () {
   let query = prompt("Введіть прізвище або підрозділ для пошуку:");
   if (query !== null) {
     searchQuery = query.toLowerCase().trim();
@@ -309,66 +452,52 @@ function promptSearch() {
     if (btn) btn.style.display = searchQuery ? "inline-block" : "none";
     renderTable();
   }
-}
+};
 
-function resetSearch() {
+window.resetSearch = function () {
   searchQuery = "";
   const btn = document.getElementById("resetSearchBtn");
   if (btn) btn.style.display = "none";
   renderTable();
-}
+};
 
-// ==========================================
-// 8. УПРАВЛІННЯ ХАРЧУВАННЯМ (TOGGLE)
-// ==========================================
-function toggleMeal(index, mealType) {
+window.toggleMeal = function (index, mealType) {
   const list = getPersonnel();
   if (!list[index]) return;
-
-  const currentStatus = list[index][mealType];
   list[index][mealType] =
-    currentStatus === "Зарахувати" ? "Не зараховувати" : "Зарахувати";
-
+    list[index][mealType] === "Зарахувати" ? "Не зараховувати" : "Зарахувати";
   saveLocal();
   syncToFirestore(currentDateStr);
   renderTable();
-}
+};
 
-// ==========================================
-// 9. ВІДОБРАЖЕННЯ ТАБЛИЦІ (RENDER)
-// ==========================================
-function renderTable() {
+window.renderTable = function () {
   const tbody = document.getElementById("tableBody");
   if (!tbody) return;
-
   tbody.innerHTML = "";
 
   const list = getPersonnel();
   sortPersonnel(list);
   updateDatalists();
 
-  const unitFilterEl = document.getElementById("unitFilter");
-  const selectedUnit = unitFilterEl ? unitFilterEl.value : "ALL";
+  const selectedUnit = document.getElementById("unitFilter")
+    ? document.getElementById("unitFilter").value
+    : "ALL";
   let filteredIndex = 0;
-
-  let countS = 0;
-  let countO = 0;
-  let countV = 0;
+  let countS = 0,
+    countO = 0,
+    countV = 0;
 
   list.forEach((p, originalIndex) => {
     if (
       searchQuery &&
       !p.name.toLowerCase().includes(searchQuery) &&
       !p.unit.toLowerCase().includes(searchQuery)
-    ) {
+    )
       return;
-    }
-    if (selectedUnit !== "ALL" && p.unit !== selectedUnit) {
-      return;
-    }
+    if (selectedUnit !== "ALL" && p.unit !== selectedUnit) return;
 
     filteredIndex++;
-
     const sActive = p.s === "Зарахувати";
     const oActive = p.o === "Зарахувати";
     const vActive = p.v === "Зарахувати";
@@ -382,21 +511,9 @@ function renderTable() {
             <td>${p.rank}</td>
             <td style="text-align: left; font-weight: 600;">${p.name}</td>
             <td>${p.unit}</td>
-            <td>
-                <button class="btn-meal ${sActive ? "active" : "inactive"}" onclick="toggleMeal(${originalIndex}, 's')">
-                    ${sActive ? "Зарахований" : "Незарахований"}
-                </button>
-            </td>
-            <td>
-                <button class="btn-meal ${oActive ? "active" : "inactive"}" onclick="toggleMeal(${originalIndex}, 'o')">
-                    ${oActive ? "Зарахований" : "Незарахований"}
-                </button>
-            </td>
-            <td>
-                <button class="btn-meal ${vActive ? "active" : "inactive"}" onclick="toggleMeal(${originalIndex}, 'v')">
-                    ${vActive ? "Зарахований" : "Незарахований"}
-                </button>
-            </td>
+            <td><button class="btn-meal ${sActive ? "active" : "inactive"}" onclick="toggleMeal(${originalIndex}, 's')">${sActive ? "Зарахований" : "Незарахований"}</button></td>
+            <td><button class="btn-meal ${oActive ? "active" : "inactive"}" onclick="toggleMeal(${originalIndex}, 'o')">${oActive ? "Зарахований" : "Незарахований"}</button></td>
+            <td><button class="btn-meal ${vActive ? "active" : "inactive"}" onclick="toggleMeal(${originalIndex}, 'v')">${vActive ? "Зарахований" : "Незарахований"}</button></td>
             <td>
                 <div class="action-buttons">
                     <button class="btn-warning" onclick="editPerson(${originalIndex})" title="Редагувати">✎</button>
@@ -407,35 +524,30 @@ function renderTable() {
     tbody.innerHTML += row;
   });
 
-  const totalS = document.getElementById("totalBreakfast");
-  const totalO = document.getElementById("totalLunch");
-  const totalV = document.getElementById("totalDinner");
+  if (document.getElementById("totalBreakfast"))
+    document.getElementById("totalBreakfast").innerText = countS;
+  if (document.getElementById("totalLunch"))
+    document.getElementById("totalLunch").innerText = countO;
+  if (document.getElementById("totalDinner"))
+    document.getElementById("totalDinner").innerText = countV;
+};
 
-  if (totalS) totalS.innerText = countS;
-  if (totalO) totalO.innerText = countO;
-  if (totalV) totalV.innerText = countV;
-}
-
-// ==========================================
-// 10. ДОДАВАННЯ ТА РЕДАГУВАННЯ ОСОБОВОГО СКЛАДУ
-// ==========================================
-function savePerson() {
+window.savePerson = function () {
   const rank = document.getElementById("newRank").value.trim();
   const name = document.getElementById("newName").value.trim();
   const unit = document.getElementById("newUnit").value.trim();
   const editIndex = parseInt(document.getElementById("editIndex").value);
 
   if (!name) {
-    alert("Будь ласка, введіть прізвище!");
+    alert("Введіть прізвище!");
     return;
   }
-
   const list = getPersonnel();
 
   if (editIndex === -1) {
     list.push({
       rank: rank || "солдат",
-      name: name,
+      name,
       unit: unit || "-",
       s: "Не зараховувати",
       o: "Не зараховувати",
@@ -451,17 +563,12 @@ function savePerson() {
   syncToFirestore(currentDateStr);
   resetForm();
   updateUnitFilterOptions();
-  searchQuery = "";
-  const btn = document.getElementById("resetSearchBtn");
-  if (btn) btn.style.display = "none";
   renderTable();
-}
+};
 
-function editPerson(index) {
-  const list = getPersonnel();
-  const p = list[index];
+window.editPerson = function (index) {
+  const p = getPersonnel()[index];
   if (!p) return;
-
   document.getElementById("newRank").value = p.rank;
   document.getElementById("newName").value = p.name;
   document.getElementById("newUnit").value = p.unit;
@@ -471,158 +578,70 @@ function editPerson(index) {
     "✏️ Редагувати військовослужбовця";
   document.getElementById("saveBtn").innerText = "Зберегти зміни";
   document.getElementById("cancelBtn").style.display = "inline-block";
-
   toggleForm(true);
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
+};
 
-function resetForm() {
+window.resetForm = function () {
   document.getElementById("newRank").value = "";
   document.getElementById("newName").value = "";
   document.getElementById("newUnit").value = "";
   document.getElementById("editIndex").value = "-1";
-
   document.getElementById("formTitle").innerText =
     "➕ Додати нового військовослужбовця";
   document.getElementById("saveBtn").innerText = "Додати до списку";
   document.getElementById("cancelBtn").style.display = "none";
-
   toggleForm(false);
-}
+};
 
-function removePerson(index) {
-  if (confirm("Видалити цього військовослужбовця зі списку?")) {
-    const list = getPersonnel();
-    list.splice(index, 1);
+window.removePerson = function (index) {
+  if (confirm("Видалити військовослужбовця?")) {
+    getPersonnel().splice(index, 1);
     saveLocal();
     syncToFirestore(currentDateStr);
-    resetForm();
-    updateUnitFilterOptions();
     renderTable();
   }
-}
+};
 
-// ==========================================
-// 11. ФАЙЛОВІ ОПЕРАЦІЇ (JSON)
-// ==========================================
-async function saveDataToJson() {
-  try {
-    const dataToSave = dbByDate;
-
-    if (!dataToSave || Object.keys(dataToSave).length === 0) {
-      alert("Немає даних для збереження!");
-      return;
-    }
-
-    const jsonString = JSON.stringify(dataToSave, null, 2);
-    const todayStr = new Date().toISOString().split("T")[0];
-    const fileName = `meal_data_${todayStr}.json`;
-
-    if ("showSaveFilePicker" in window) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: fileName,
-          types: [
-            {
-              description: "Файл даних JSON (*.json)",
-              accept: { "application/json": [".json"] },
-            },
-          ],
-        });
-
-        const writable = await handle.createWritable();
-        await writable.write(jsonString);
-        await writable.close();
-
-        alert("Дані успішно збережено у файл!");
-      } catch (err) {
-        if (err.name === "AbortError") {
-          console.log("Збереження скасовано.");
-        } else {
-          console.error("Помилка File System API:", err);
-          fallbackDownload(jsonString, fileName);
-        }
-      }
-    } else {
-      fallbackDownload(jsonString, fileName);
-    }
-  } catch (error) {
-    console.error("Критична помилка під час підготовки даних:", error);
-    alert("Виникла помилка під час формування файлу даних.");
-  }
-}
-
-function fallbackDownload(content, filename) {
-  const blob = new Blob([content], { type: "application/json;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
+window.saveDataToJson = async function () {
+  const jsonString = JSON.stringify(dbByDate, null, 2);
+  const fileName = `meal_data_${new Date().toISOString().split("T")[0]}.json`;
+  const blob = new Blob([jsonString], { type: "application/json" });
   const a = document.createElement("a");
-
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-
-  document.body.appendChild(a);
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
   a.click();
+};
 
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
+window.loadFromFile = function () {
+  const input = document.getElementById("fileInput");
+  if (input) input.click();
+};
 
-  alert("Файл збережено!");
-}
-
-function loadFromFile() {
-  const fileInput = document.getElementById("fileInput");
-  if (fileInput) fileInput.click();
-}
-
-function handleFileSelect(event) {
+window.handleFileSelect = function (event) {
   const file = event.target.files[0];
   if (!file) return;
-
   const reader = new FileReader();
   reader.onload = async function (e) {
     try {
-      const loadedData = JSON.parse(e.target.result);
-      if (typeof loadedData === "object" && !Array.isArray(loadedData)) {
-        dbByDate = loadedData;
-        saveLocal();
-        await syncToFirestore(currentDateStr);
-        onDateChange();
-        alert("Дані успішно завантажено!");
-      } else if (Array.isArray(loadedData)) {
-        dbByDate[currentDateStr] = loadedData;
-        saveLocal();
-        await syncToFirestore(currentDateStr);
-        renderTable();
-        alert(`Дані завантажено на дату ${currentDateStr}!`);
-      } else {
-        alert("Помилка: Некоректна структура JSON!");
-      }
+      const loaded = JSON.parse(e.target.result);
+      if (typeof loaded === "object" && !Array.isArray(loaded))
+        dbByDate = loaded;
+      saveLocal();
+      await syncToFirestore(currentDateStr);
+      onDateChange();
+      alert("Дані успішно завантажено!");
     } catch (err) {
-      alert("Помилка читання JSON файлу!");
+      alert("Помилка читання JSON!");
     }
   };
   reader.readAsText(file);
-}
+};
 
-// ==========================================
-// 12. ЕКСПОРТ У EXCEL
-// ==========================================
-function exportToExcel() {
-  const dateVal = getCurrentDate();
+window.exportToExcel = function () {
   const list = getPersonnel();
   sortPersonnel(list);
-
-  const unitFilterEl = document.getElementById("unitFilter");
-  const selectedUnit = unitFilterEl ? unitFilterEl.value : "ALL";
-  const unitTitle =
-    selectedUnit === "ALL" ? "Всі підрозділи" : `Підрозділ: ${selectedUnit}`;
-
   let excelData = [
-    [`ЗВІТ ПРО ФАКТИЧНЕ ХАРЧУВАННЯ ОСОБОВОГО СКЛАДУ ЗА ДАТУ: ${dateVal}`],
-    [`Фільтр: ${unitTitle}`],
+    [`ЗВІТ ПРО ФАКТИЧНЕ ХАРЧУВАННЯ ЗА ДАТУ: ${getCurrentDate()}`],
     [],
     [
       "№ п/п",
@@ -635,43 +654,16 @@ function exportToExcel() {
     ],
   ];
 
-  let countS = 0;
-  let countO = 0;
-  let countV = 0;
-  let rowIdx = 0;
-
-  list.forEach((p) => {
-    if (selectedUnit !== "ALL" && p.unit !== selectedUnit) return;
-
-    rowIdx++;
-    let sVal = p.s || "Не зараховувати";
-    let oVal = p.o || "Не зараховувати";
-    let vVal = p.v || "Не зараховувати";
-
-    if (sVal === "Зарахувати") countS++;
-    if (oVal === "Зарахувати") countO++;
-    if (vVal === "Зарахувати") countV++;
-
-    excelData.push([rowIdx, p.rank, p.name, p.unit, sVal, oVal, vVal]);
+  list.forEach((p, idx) => {
+    excelData.push([idx + 1, p.rank, p.name, p.unit, p.s, p.o, p.v]);
   });
-
-  excelData.push([]);
-  excelData.push([
-    "ПІДСУМОК:",
-    "",
-    "",
-    "",
-    `Всього на сніданок: ${countS}`,
-    `На обід: ${countO}`,
-    `На вечерю: ${countV}`,
-  ]);
 
   if (typeof XLSX !== "undefined") {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(excelData);
-    XLSX.utils.book_append_sheet(wb, ws, "Звіт харчування");
-    XLSX.writeFile(wb, `Zvit_Harchuvannya_${dateVal}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "Звіт");
+    XLSX.writeFile(wb, `Zvit_${getCurrentDate()}.xlsx`);
   } else {
-    alert("Бібліотека SheetJS (XLSX) не підключена в HTML!");
+    alert("Бібліотека XLSX не підключена!");
   }
-}
+};

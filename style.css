@@ -227,3 +227,91 @@ tfoot td {
     display: none;
     margin-top: 10px;
 }
+/* Авторизаційне вікно */
+.auth-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(15, 23, 42, 0.92);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 9999;
+}
+
+.auth-card {
+    background: #ffffff;
+    padding: 28px 22px;
+    border-radius: 12px;
+    text-align: center;
+    max-width: 340px;
+    width: 90%;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    border-top: 5px solid #005BBB;
+}
+
+.auth-icon { font-size: 36px; margin-bottom: 8px; }
+.auth-card h3 { margin: 0 0 6px 0; color: #1a2530; font-size: 20px; }
+.auth-desc { font-size: 13px; color: #64748b; margin-bottom: 18px; }
+
+.auth-card input {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    text-align: center;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.btn-auth {
+    width: 100%;
+    padding: 12px;
+    background: #005BBB;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.btn-auth.btn-success { background: #16a34a; }
+
+.btn-link {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 12px;
+    margin-top: 10px;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.user-info-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 4px 10px;
+    border-radius: 20px;
+}
+
+.btn-logout {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.online-user-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 13px;
+}
