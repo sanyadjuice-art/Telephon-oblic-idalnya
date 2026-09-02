@@ -12,123 +12,118 @@
 <body>
 
   <!-- МОДАЛЬНЕ ВІКНО АВТОРИЗАЦІЇ ТА ПРОФІЛЮ -->
-  <div id="authModal" style="display: flex;">
-    
-    <!-- Крок 1: Введення телефону -->
-    <div id="stepPhone">
-      <h2>Вхід у систему</h2>
-      <p>Введіть номер телефону</p>
-      <input type="tel" id="phoneNumber" placeholder="+380XXXXXXXXX" value="+380">
-      <div id="recaptcha-container"></div>
-      <button onclick="sendSMS()">Отримати SMS-код</button>
-    </div>
+  <div id="authModal" class="auth-modal-overlay" style="display: flex;">
+    <div class="auth-card">
+      <div class="trident">🔱</div>
 
-    <!-- Крок 2: Введення коду SMS -->
-    <div id="stepCode" style="display: none;">
-      <h2>Підтвердження</h2>
-      <p>Введіть 6-значний код з SMS</p>
-      <input type="text" id="smsCode" placeholder="XXXXXX" maxlength="6">
-      <button onclick="verifyCode()">Підтвердити</button>
-      <button onclick="resetAuthSteps()">Назад</button>
-    </div>
+      <!-- Крок 1: Введення телефону -->
+      <div id="stepPhone">
+        <h3>Вхід у систему</h3>
+        <p class="auth-desc">Введіть номер телефону для авторизації</p>
+        <input type="tel" id="phoneNumber" placeholder="+380XXXXXXXXX" value="+380">
+        <div id="recaptcha-container"></div>
+        <button class="btn-auth" onclick="sendSMS()">Отримати SMS-код</button>
+      </div>
 
-    <!-- Крок 3: Заповнення профілю (якщо перший вхід) -->
-    <div id="stepProfile" style="display: none;">
-      <h2>Заповнення профілю</h2>
-      <input type="text" id="userRank" list="authRanksList" placeholder="Військове звання">
-      <input type="text" id="userFullName" placeholder="Прізвище та ініціали (*)" required>
-      <input type="text" id="userUnit" list="authUnitsList" placeholder="Підрозділ">
-      <button onclick="saveProfile()">Зберегти профіль</button>
-    </div>
+      <!-- Крок 2: Введення коду SMS -->
+      <div id="stepCode" style="display: none;">
+        <h3>Підтвердження</h3>
+        <p class="auth-desc">Введіть 6-значний код з SMS</p>
+        <input type="text" id="smsCode" placeholder="XXXXXX" maxlength="6">
+        <button class="btn-auth btn-success" onclick="verifyCode()">Підтвердити</button>
+        <button class="btn-link" onclick="resetAuthSteps()">Назад</button>
+      </div>
 
+      <!-- Крок 3: Заповнення профілю -->
+      <div id="stepProfile" style="display: none;">
+        <h3>Заповнення профілю</h3>
+        <input type="text" id="userRank" list="authRanksList" placeholder="Військове звання">
+        <input type="text" id="userFullName" placeholder="Прізвище та ініціали (*)" required>
+        <input type="text" id="userUnit" list="authUnitsList" placeholder="Підрозділ">
+        <button class="btn-auth" onclick="saveProfile()">Зберегти профіль</button>
+      </div>
+    </div>
   </div>
 
   <!-- ОСНОВНИЙ КОНТЕНТ ДОДАТКУ -->
   <div id="appContent" style="display: none;">
     
     <!-- Шапка додатку -->
-    <header style="display: flex; justify-content: space-between; align-items: center; padding: 10px;">
-      <div>
-        <span>Користувач: </span>
-        <strong id="headerUserName">-</strong>
-      </div>
-      <div>
-        <button onclick="logout()">Вийти</button>
+    <header class="header-container">
+      <div class="trident">🔱</div>
+      <h2>Облік харчування особового складу</h2>
+      <div class="user-info-header" style="margin-top: 10px; justify-content: center;">
+        <span>Користувач: <strong id="headerUserName">-</strong></span>
+        <button class="btn-logout" onclick="logout()">Вийти</button>
       </div>
     </header>
 
-    <hr>
-
     <!-- Панель користувачів онлайн -->
-    <div>
-      <h3>
-        Користувачі онлайн (<span id="onlineCount">0</span>) 
-        <button onclick="toggleOnlinePanel()"><span id="onlineToggleIcon">➖</span></button>
-      </h3>
-      <div id="onlineUsersList"></div>
+    <div class="card">
+      <div class="collapsible-header" onclick="toggleOnlinePanel()">
+        <span>Користувачі онлайн (<span id="onlineCount" class="meal-count">0</span>)</span>
+        <span id="onlineToggleIcon" class="icon">➖</span>
+      </div>
+      <div id="onlineUsersList" style="margin-top: 8px;"></div>
     </div>
-
-    <hr>
 
     <!-- Панель керування та фільтрів -->
-    <div>
-      <label>Дата звіту: <input type="date" id="reportDate" onchange="onDateChange()"></label>
+    <div class="card">
+      <label for="reportDate">Дата звіту:</label>
+      <input type="date" id="reportDate" onchange="onDateChange()">
       
-      <label>Фільтр підрозділу: 
-        <select id="unitFilter" onchange="renderTable()">
-          <option value="ALL">Всі підрозділи</option>
-        </select>
-      </label>
+      <label for="unitFilter">Фільтр підрозділу:</label>
+      <select id="unitFilter" onchange="renderTable()">
+        <option value="ALL">Всі підрозділи</option>
+      </select>
 
-      <button onclick="promptSearch()">Пошук 🔍</button>
-      <button id="resetSearchBtn" onclick="resetSearch()" style="display: none;">Скинути пошук ❌</button>
+      <button class="btn-search" onclick="promptSearch()">Пошук 🔍</button>
+      <button id="resetSearchBtn" class="btn-reset" onclick="resetSearch()">Скинути пошук ❌</button>
     </div>
 
-    <br>
-
     <!-- Форма додавання / редагування -->
-    <div>
-      <h3>
+    <div class="card add-box">
+      <div class="collapsible-header" onclick="toggleForm()">
         <span id="formTitle">➕ Додати нового військовослужбовця</span>
-        <button onclick="toggleForm()"><span id="toggleIcon">➕</span></button>
-      </h3>
+        <span id="toggleIcon" class="icon">➕</span>
+      </div>
 
-      <div id="formContent" style="display: none;">
+      <div id="formContent" class="form-content">
         <input type="hidden" id="editIndex" value="-1">
         <input type="text" id="newRank" list="ranksList" placeholder="Звання">
         <input type="text" id="newName" placeholder="Прізвище та ініціали (*)">
         <input type="text" id="newUnit" list="unitsList" placeholder="Підрозділ">
-        <button id="saveBtn" onclick="savePerson()">Додати до списку</button>
-        <button id="cancelBtn" onclick="resetForm()" style="display: none;">Скасувати</button>
+        <button id="saveBtn" class="btn" onclick="savePerson()">Додати до списку</button>
+        <button id="cancelBtn" class="btn btn-secondary" onclick="resetForm()" style="display: none;">Скасувати</button>
       </div>
     </div>
 
-    <br>
-
     <!-- Основна таблиця обліку -->
-    <table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%; text-align: center;">
-      <thead>
-        <tr>
-          <th>№</th>
-          <th>Звання</th>
-          <th>ПІБ</th>
-          <th>Підрозділ</th>
-          <th>Сніданок (<span id="totalBreakfast">0</span>)</th>
-          <th>Обід (<span id="totalLunch">0</span>)</th>
-          <th>Вечеря (<span id="totalDinner">0</span>)</th>
-          <th>Дії</th>
-        </tr>
-      </thead>
-      <tbody id="tableBody"></tbody>
-    </table>
-
-    <br>
+    <div class="card" style="padding: 6px;">
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>№</th>
+              <th>Звання</th>
+              <th>ПІБ</th>
+              <th>Підрозділ</th>
+              <th>Сніданок (<span id="totalBreakfast">0</span>)</th>
+              <th>Обід (<span id="totalLunch">0</span>)</th>
+              <th>Вечеря (<span id="totalDinner">0</span>)</th>
+              <th>Дії</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- Панель імпорту/експорту -->
-    <div>
-      <button onclick="exportToExcel()">📊 Експорт в Excel</button>
-      <button onclick="saveDataToJson()">💾 Зберегти JSON</button>
-      <button onclick="loadFromFile()">📂 Завантажити з JSON</button>
+    <div class="file-controls">
+      <button class="btn btn-file" onclick="exportToExcel()">📊 Експорт в Excel</button>
+      <button class="btn btn-warning" onclick="saveDataToJson()">💾 Зберегти JSON</button>
+      <button class="btn btn-primary" onclick="loadFromFile()">📂 Завантажити з JSON</button>
       <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileSelect(event)">
     </div>
 
