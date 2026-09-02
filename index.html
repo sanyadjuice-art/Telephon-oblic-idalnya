@@ -5,30 +5,142 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Облік харчування особового складу</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="style.css?v=1">
+  <link rel="stylesheet" href="style.css">
+  <!-- Бібліотека для експорту в Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
-  <div id="auth-container">
-    <h2>Вхід у систему</h2>
-    <p>Введіть номер телефону для отримання SMS</p>
-    <input type="tel" id="phone-number" placeholder="+380XXXXXXXXX" value="+380">
-    <div id="recaptcha-container"></div>
-    <button id="send-code-btn">Отримати SMS-код</button>
+  <!-- МОДАЛЬНЕ ВІКНО АВТОРИЗАЦІЇ ТА ПРОФІЛЮ -->
+  <div id="authModal" style="display: flex;">
+    
+    <!-- Крок 1: Введення телефону -->
+    <div id="stepPhone">
+      <h2>Вхід у систему</h2>
+      <p>Введіть номер телефону</p>
+      <input type="tel" id="phoneNumber" placeholder="+380XXXXXXXXX" value="+380">
+      <div id="recaptcha-container"></div>
+      <button onclick="sendSMS()">Отримати SMS-код</button>
+    </div>
+
+    <!-- Крок 2: Введення коду SMS -->
+    <div id="stepCode" style="display: none;">
+      <h2>Підтвердження</h2>
+      <p>Введіть 6-значний код з SMS</p>
+      <input type="text" id="smsCode" placeholder="XXXXXX" maxlength="6">
+      <button onclick="verifyCode()">Підтвердити</button>
+      <button onclick="resetAuthSteps()">Назад</button>
+    </div>
+
+    <!-- Крок 3: Заповнення профілю (якщо перший вхід) -->
+    <div id="stepProfile" style="display: none;">
+      <h2>Заповнення профілю</h2>
+      <input type="text" id="userRank" list="authRanksList" placeholder="Військове звання">
+      <input type="text" id="userFullName" placeholder="Прізвище та ініціали (*)" required>
+      <input type="text" id="userUnit" list="authUnitsList" placeholder="Підрозділ">
+      <button onclick="saveProfile()">Зберегти профіль</button>
+    </div>
+
   </div>
 
-  <div id="verification-container" style="display: none;">
-    <h2>Підтвердження</h2>
-    <input type="text" id="verification-code" placeholder="Код з SMS">
-    <button id="verify-code-btn">Підтвердити</button>
+  <!-- ОСНОВНИЙ КОНТЕНТ ДОДАТКУ -->
+  <div id="appContent" style="display: none;">
+    
+    <!-- Шапка додатку -->
+    <header style="display: flex; justify-content: space-between; align-items: center; padding: 10px;">
+      <div>
+        <span>Користувач: </span>
+        <strong id="headerUserName">-</strong>
+      </div>
+      <div>
+        <button onclick="logout()">Вийти</button>
+      </div>
+    </header>
+
+    <hr>
+
+    <!-- Панель користувачів онлайн -->
+    <div>
+      <h3>
+        Користувачі онлайн (<span id="onlineCount">0</span>) 
+        <button onclick="toggleOnlinePanel()"><span id="onlineToggleIcon">➖</span></button>
+      </h3>
+      <div id="onlineUsersList"></div>
+    </div>
+
+    <hr>
+
+    <!-- Панель керування та фільтрів -->
+    <div>
+      <label>Дата звіту: <input type="date" id="reportDate" onchange="onDateChange()"></label>
+      
+      <label>Фільтр підрозділу: 
+        <select id="unitFilter" onchange="renderTable()">
+          <option value="ALL">Всі підрозділи</option>
+        </select>
+      </label>
+
+      <button onclick="promptSearch()">Пошук 🔍</button>
+      <button id="resetSearchBtn" onclick="resetSearch()" style="display: none;">Скинути пошук ❌</button>
+    </div>
+
+    <br>
+
+    <!-- Форма додавання / редагування -->
+    <div>
+      <h3>
+        <span id="formTitle">➕ Додати нового військовослужбовця</span>
+        <button onclick="toggleForm()"><span id="toggleIcon">➕</span></button>
+      </h3>
+
+      <div id="formContent" style="display: none;">
+        <input type="hidden" id="editIndex" value="-1">
+        <input type="text" id="newRank" list="ranksList" placeholder="Звання">
+        <input type="text" id="newName" placeholder="Прізвище та ініціали (*)">
+        <input type="text" id="newUnit" list="unitsList" placeholder="Підрозділ">
+        <button id="saveBtn" onclick="savePerson()">Додати до списку</button>
+        <button id="cancelBtn" onclick="resetForm()" style="display: none;">Скасувати</button>
+      </div>
+    </div>
+
+    <br>
+
+    <!-- Основна таблиця обліку -->
+    <table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%; text-align: center;">
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Звання</th>
+          <th>ПІБ</th>
+          <th>Підрозділ</th>
+          <th>Сніданок (<span id="totalBreakfast">0</span>)</th>
+          <th>Обід (<span id="totalLunch">0</span>)</th>
+          <th>Вечеря (<span id="totalDinner">0</span>)</th>
+          <th>Дії</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+
+    <br>
+
+    <!-- Панель імпорту/експорту -->
+    <div>
+      <button onclick="exportToExcel()">📊 Експорт в Excel</button>
+      <button onclick="saveDataToJson()">💾 Зберегти JSON</button>
+      <button onclick="loadFromFile()">📂 Завантажити з JSON</button>
+      <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileSelect(event)">
+    </div>
+
   </div>
 
-  <!-- Firebase App & Auth SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <!-- Випадаючі списки підказок для autocomplete -->
+  <datalist id="ranksList"></datalist>
+  <datalist id="unitsList"></datalist>
+  <datalist id="authRanksList"></datalist>
+  <datalist id="authUnitsList"></datalist>
 
-  <!-- Основний скрипт логіки -->
-  <script src="app.js"></script>
+  <!-- Підключення основного модуля JS -->
+  <script type="module" src="app.js"></script>
 </body>
 </html>

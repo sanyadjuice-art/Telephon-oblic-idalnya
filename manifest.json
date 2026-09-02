@@ -1,6 +1,6 @@
 {
-  "short_name": "Облік харчування",
-  "name": "Облік харчування особового складу",
+  "short_name": "Облік",
+  "name": "Телефонний довідник та облік",
   "icons": [
     {
       "src": "icon-192.png",
@@ -14,7 +14,7 @@
     }
   ],
   "start_url": "./index.html",
-  "background_color": "#ffffff",
-  "theme_color": "#1b365d",
+  "background_color": "#4a90e2",
+  "theme_color": "#4a90e2",
   "display": "standalone"
 }
