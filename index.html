@@ -11,37 +11,32 @@
 <body>
 
   <!-- МОДАЛЬНЕ ВІКНО АВТОРИЗАЦІЇ ТА ПРОФІЛЬ -->
-  <div id="authModal" class="auth-modal-overlay" style="display: flex;">
-    <div class="auth-card">
-      <div class="trident">🔱</div>
-
-      <!-- Крок 1: Введення телефону -->
-      <div id="stepPhone">
-        <h3>Вхід у систему</h3>
-        <p class="auth-desc">Введіть номер телефону для авторизації</p>
-        <input type="tel" id="phoneNumber" placeholder="+380XXXXXXXXX" value="+380">
-        <div id="recaptcha-container"></div>
-        <button class="btn-auth" onclick="sendSMS()">Отримати SMS-код</button>
-      </div>
-
-      <!-- Крок 2: Введення коду SMS -->
-      <div id="stepCode" style="display: none;">
-        <h3>Підтвердження</h3>
-        <p class="auth-desc">Введіть 6-значний код з SMS</p>
-        <input type="text" id="smsCode" placeholder="XXXXXX" maxlength="6">
-        <button class="btn-auth btn-success" onclick="verifyCode()">Підтвердити</button>
-      </div>
-
-      <!-- Крок 3: Заповнення профілю -->
-      <div id="stepProfile" style="display: none;">
-        <h3>Заповнення профілю</h3>
-        <input type="text" id="userRank" list="authRanksList" placeholder="Військове звання">
-        <input type="text" id="userFullName" placeholder="Прізвище та ініціали (*)" required>
-        <input type="text" id="userUnit" list="authUnitsList" placeholder="Підрозділ">
-        <button class="btn-auth" onclick="saveProfile()">Зберегти профіль</button>
+  <div id="authModal" class="modal" style="display: flex;">
+  <div class="modal-content">
+    
+    <!-- Крок 1: Вхід або Реєстрація -->
+    <div id="stepAuth">
+      <h3>🔐 Вхід у систему</h3>
+      <input type="email" id="authEmail" placeholder="Електронна пошта (email)" class="form-input" style="margin-bottom: 10px; width: 100%;">
+      <input type="password" id="authPassword" placeholder="Пароль (від 6 символів)" class="form-input" style="margin-bottom: 15px; width: 100%;">
+      
+      <div style="display: flex; gap: 10px;">
+        <button onclick="loginUser()" class="btn btn-primary" style="flex: 1;">Увійти</button>
+        <button onclick="registerUser()" class="btn btn-secondary" style="flex: 1;">Зареєструватися</button>
       </div>
     </div>
+
+    <!-- Крок 2: Заповнення профілю після реєстрації -->
+    <div id="stepProfile" style="display: none;">
+      <h3>👤 Профіль користувача</h3>
+      <input type="text" id="userRank" placeholder="Військове звання" class="form-input" style="margin-bottom: 10px; width: 100%;">
+      <input type="text" id="userFullName" placeholder="Прізвище та Ініціали *" class="form-input" style="margin-bottom: 10px; width: 100%;">
+      <input type="text" id="userUnit" placeholder="Підрозділ / Рота" class="form-input" style="margin-bottom: 15px; width: 100%;">
+      <button onclick="saveProfile()" class="btn btn-primary" style="width: 100%;">Зберегти та увійти</button>
+    </div>
+
   </div>
+</div>
 
   <!-- ОСНОВНИЙ КОНТЕНТ ДОДАТКУ -->
   <div id="appContent" style="display: none;">
