@@ -577,3 +577,125 @@ window.resetSearch = () => {
 };
 
 document.addEventListener("DOMContentLoaded", () => App.init());
+
+// Налаштування воркера PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+/**
+ * Обробник вибору PDF-файлу
+ */
+async function handlePDFUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = "";
+
+    // Зчитуємо текст з усіх сторінок PDF
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item) => item.str).join(" ");
+      fullText += pageText + "\n";
+    }
+
+    // Передаємо витягнутий текст на обробку
+    processApplicationText(fullText);
+
+    // Очищаємо інпут, щоб можна було завантажити той самий файл повторно
+    event.target.value = "";
+  } catch (error) {
+    console.error("Помилка зчитування PDF:", error);
+    UI.showToast("Помилка при зчитуванні PDF-файлу!");
+  }
+}
+
+/**
+ * Парсинг тексту заявки, визначення підрозділу та перевірка на повторення
+ */
+function processApplicationText(textContent) {
+  // 1. Автоматичне визначення підрозділу з тексту заявки
+  let detectedUnit = "Заявка";
+  if (
+    textContent.includes("відділу спеціальних дій") ||
+    textContent.includes("ВСД")
+  ) {
+    detectedUnit = "ВСД";
+  } else if (
+    textContent.includes("1-ша рота") ||
+    textContent.includes("1 рота")
+  ) {
+    detectedUnit = "1-ша рота";
+  }
+
+  const currentList = state.getPersonnelForCurrentDate();
+  let addedCount = 0;
+  let updatedCount = 0;
+
+  // 2. Регулярний вираз для пошуку рядків таблиці
+  // Шукає структуру: Номер. | Звання | ПІБ | Сніданок | Обід | Вечеря
+  const personRegex =
+    /\d+\.\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|\n]+)/g;
+  let match;
+
+  while ((match = personRegex.exec(textContent)) !== null) {
+    const rank = match[1].trim();
+    const name = match[2].trim();
+    const s = match[3].trim().toLowerCase().includes("зараховано")
+      ? "Зарахувати"
+      : "Не зараховувати";
+    const o = match[4].trim().toLowerCase().includes("зараховано")
+      ? "Зарахувати"
+      : "Не зараховувати";
+    const v = match[5].trim().toLowerCase().includes("зараховано")
+      ? "Зарахувати"
+      : "Не зараховувати";
+
+    // 3. Перевірка на повторення (дублікати) за ПІБ
+    const existingIndex = currentList.findIndex(
+      (p) => (p.name || p.fullName || "").toLowerCase() === name.toLowerCase(),
+    );
+
+    if (existingIndex !== -1) {
+      // Якщо військовослужбовець вже є — оновлюємо його підрозділ та статуси
+      currentList[existingIndex].rank = rank;
+      currentList[existingIndex].unit = detectedUnit;
+      currentList[existingIndex].s = s;
+      currentList[existingIndex].o = o;
+      currentList[existingIndex].v = v;
+      updatedCount++;
+    } else {
+      // Якщо немає — додаємо нового
+      currentList.push({
+        rank: rank,
+        name: name,
+        unit: detectedUnit,
+        s: s,
+        o: o,
+        v: v,
+      });
+      addedCount++;
+    }
+  }
+
+  if (addedCount === 0 && updatedCount === 0) {
+    UI.showToast("Не вдалося знайти табличні дані у завантаженому PDF!");
+    return;
+  }
+
+  // Збереження оновлених даних та синхронізація з Firestore
+  state.setPersonnelForCurrentDate(currentList);
+  MealService.syncToFirestore(state.currentDate);
+  App.updateUnitFilterOptions();
+  App.renderTable();
+
+  UI.showToast(
+    `Заявку успішно опрацьовано!\n• Додано нових: ${addedCount}\n• Оновлено існуючих: ${updatedCount}`,
+  );
+}
+
+// Реєструємо функцію у global window для доступу з HTML
+window.handlePDFUpload = handlePDFUpload;

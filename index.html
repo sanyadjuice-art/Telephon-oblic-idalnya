@@ -7,6 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head> 
 <body>
 
@@ -46,6 +47,15 @@
 
     </div>
   </div>
+
+  <!-- 2. HTML-блок для завантаження PDF-заявки -->
+<div class="card file-controls">
+  <label for="pdfFileInput"><b>📄 Завантажити заявку (.pdf):</b></label>
+  <input type="file" id="pdfFileInput" accept=".pdf,application/pdf" style="display: none;" onchange="handlePDFUpload(event)">
+  <button type="button" class="btn btn-file" onclick="document.getElementById('pdfFileInput').click()">
+    📂 Обрати PDF-заявку
+  </button>
+</div>
 
   <!-- ОСНОВНИЙ КОНТЕНТ ДОДАТКУ -->
   <div id="appContent" class="container" style="display: none;">
