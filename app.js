@@ -760,7 +760,7 @@ window.handlePDFUpload = async (event) => {
 
         let linesMap = {};
         textContent.items.forEach((item) => {
-          const y = Math.round(item.transform[5] / 5) * 5;
+          const y = Math.round(item.transform[5] / 4) * 4; // Точне об'єднання тексту за віссю Y
           if (!linesMap[y]) linesMap[y] = [];
           linesMap[y].push(item);
         });
@@ -780,7 +780,7 @@ window.handlePDFUpload = async (event) => {
 
       const fullText = fullTextLines.join("\n");
 
-      // 1. Пошук дати рапорту (ігноруємо дату постанови)
+      // 1. ПОШУК ДАТИ РАПОРТУ
       let formattedDate = "";
       const textDateMatch = fullText.match(
         /ЗАЯВКА[\s\S]*?«?(\d{1,2})»?\s+([а-яА-Яа-щШЩЬЮЯєЇїІіґҐ]+)\s+(\d{4})/i,
@@ -806,117 +806,108 @@ window.handlePDFUpload = async (event) => {
         currentPersonnelList = [...state.getPersonnelForCurrentDate()];
       }
 
-      // 2. Визначення підрозділу ("дивізіон")
-      let extractedUnit = "";
-      const unitMatch =
-        fullText.match(/дивізіон[а-яА-Яа-щШЩЬЮЯєЇїІіґҐ\s]*/i) ||
-        fullText.match(/ДнМО/i);
-      if (unitMatch) {
-        extractedUnit = "дивізіон";
-      } else {
-        extractedUnit = "дивізіон";
-      }
-
-      // 3. Збирання та склеювання рядків таблиці
+      // 2. ВІДФІЛЬТРОВУЄМО ТІЛЬКИ ТАБЛИЧНІ РЯДКИ
       let cleanRecords = [];
-      let currentRecord = null;
+      let currentRecord = "";
 
       for (let line of fullTextLines) {
-        const startMatch = line.match(/^(\d{1,2})\s+(.+)/);
-        if (startMatch) {
+        // Перевіряємо, чи починається рядок з цифри (1, 2, 3...)
+        const isStartOfRow = /^\d{1,2}[\s\.\)]/.test(line);
+
+        if (isStartOfRow) {
           if (currentRecord) cleanRecords.push(currentRecord);
           currentRecord = line;
         } else if (currentRecord) {
+          // Якщо це розрив рядка (наприклад "Геннадійович"), додаємо його до поточного запису
           if (
             !line.includes("Старшина") &&
             !line.includes("КЕП:") &&
-            !line.includes("Сертифікат")
+            !line.includes("Сертифікат") &&
+            !line.includes("Начальнику")
           ) {
             currentRecord += " " + line;
           } else {
             cleanRecords.push(currentRecord);
-            currentRecord = null;
+            currentRecord = "";
           }
         }
       }
       if (currentRecord) cleanRecords.push(currentRecord);
 
-      // 4. Витягування ПІБ, звання (якщо є) та статусів
+      // 3. РОЗБІР КОЖНОГО ЗАПИСУ
       cleanRecords.forEach((recordStr) => {
+        // Шукаємо варіанти зарахування/незарахування
         const statuses = Array.from(
           recordStr.matchAll(
-            /(зарахувати|не\s*зарахувати|зараховано|не\s*зараховано|-)/gi,
+            /(зарахувати|не\s*зарахувати|незарахувати|зараховано|не\s*зараховано)/gi,
           ),
         );
 
-        if (statuses.length >= 3) {
-          const sText = statuses[statuses.length - 3][0].toLowerCase();
-          const oText = statuses[statuses.length - 2][0].toLowerCase();
-          const vText = statuses[statuses.length - 1][0].toLowerCase();
+        let s = "Зарахувати",
+          o = "Зарахувати",
+          v = "Не зараховувати";
 
-          const s =
+        if (statuses.length >= 3) {
+          const sText = statuses[0][0].toLowerCase();
+          const oText = statuses[1][0].toLowerCase();
+          const vText = statuses[2][0].toLowerCase();
+
+          s =
             sText.includes("зарахувати") && !sText.includes("не")
               ? "Зарахувати"
               : "Не зараховувати";
-          const o =
+          o =
             oText.includes("зарахувати") && !oText.includes("не")
               ? "Зарахувати"
               : "Не зараховувати";
-          const v =
+          v =
             vText.includes("зарахувати") && !vText.includes("не")
               ? "Зарахувати"
               : "Не зараховувати";
-
-          const firstStatusIndex = statuses[statuses.length - 3].index;
-          let rawContent = recordStr
-            .substring(0, firstStatusIndex)
-            .replace(/^\d+[\.\s]*/, "")
-            .replace(/\s+/g, " ")
-            .trim();
-
-          if (!rawContent) return;
-
-          let finalRank = ""; // Якщо звання немає, залишаємо порожнім
-          let rawName = rawContent;
-
-          // Шукаємо, чи є перші слова званням зі словника
-          const words = rawContent.split(" ");
-          if (words.length > 3) {
-            const possibleRank = words[0].toLowerCase();
-            if (window.rankDictionary && window.rankDictionary[possibleRank]) {
-              finalRank = window.rankDictionary[possibleRank];
-              rawName = words.slice(1).join(" ");
-            }
-          }
-
-          const existingIndex = currentPersonnelList.findIndex(
-            (p) =>
-              (p.name || p.fullName || "").toLowerCase() ===
-              rawName.toLowerCase(),
-          );
-
-          if (existingIndex !== -1) {
-            currentPersonnelList[existingIndex] = {
-              rank: finalRank,
-              name: rawName,
-              unit: extractedUnit,
-              s,
-              o,
-              v,
-            };
-            totalAddedCount++;
-          } else {
-            currentPersonnelList.push({
-              rank: finalRank,
-              name: rawName,
-              unit: extractedUnit,
-              s,
-              o,
-              v,
-            });
-            totalAddedCount++;
-          }
         }
+
+        // Очищаємо ПІБ від номеру п/п та слів "зарахувати/не зарахувати"
+        let rawName = recordStr
+          .replace(/^\d{1,2}[\s\.\)]*/, "") // видаляємо номер "1 "
+          .replace(
+            /(зарахувати|не\s*зарахувати|незарахувати|зараховано|не\s*зараховано)/gi,
+            "",
+          ) // видаляємо статуси
+          .replace(/\s+/g, " ") // прибираємо зайві пробіли
+          .trim();
+
+        if (!rawName) return;
+
+        let finalRank = ""; // Звання залишаємо порожнім
+        const extractedUnit = "дивізіон"; // Коротка назва підрозділу
+
+        // Оновлюємо або додаємо в список
+        const existingIndex = currentPersonnelList.findIndex(
+          (p) =>
+            (p.name || p.fullName || "").toLowerCase() ===
+            rawName.toLowerCase(),
+        );
+
+        if (existingIndex !== -1) {
+          currentPersonnelList[existingIndex] = {
+            rank: finalRank,
+            name: rawName,
+            unit: extractedUnit,
+            s,
+            o,
+            v,
+          };
+        } else {
+          currentPersonnelList.push({
+            rank: finalRank,
+            name: rawName,
+            unit: extractedUnit,
+            s,
+            o,
+            v,
+          });
+        }
+        totalAddedCount++;
       });
     }
 
