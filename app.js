@@ -35,7 +35,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // EMAIL ГОЛОВНОГО АДМІНІСТРАТОРА (Вкажіть вашу пошту)
-const ADMIN_EMAIL = "admin@gmail.com";
+const ADMIN_EMAIL = "sanya.djuice@ukr.net";
 
 class AppState {
   constructor() {
