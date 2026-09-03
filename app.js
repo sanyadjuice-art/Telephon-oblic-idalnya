@@ -29,7 +29,7 @@ const firebaseConfig = {
   storageBucket: "telephon-oblic-idalnya.firebasestorage.app",
   messagingSenderId: "591688369928",
   appId: "1:591688369928:web:09c8ef4ccdd474573a4ebd",
-  measurementId: "G-4YY48P80V3"
+  measurementId: "G-4YY48P80V3",
 };
 
 // Ініціалізація продуктів Firebase
@@ -316,6 +316,46 @@ class App {
   }
 
   static bindEvents() {
+    // Делегування подій для дій у таблиці (кнопки харчування, редагування, видалення)
+    const tbody = document.getElementById("tableBody");
+    if (tbody) {
+      tbody.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-action]");
+        if (!btn) return;
+
+        const action = btn.dataset.action;
+        const idx = parseInt(btn.dataset.idx, 10);
+
+        if (action === "toggleMeal") {
+          const mealType = btn.dataset.meal;
+          const list = state.getPersonnelForCurrentDate();
+          if (list[idx]) {
+            list[idx][mealType] =
+              list[idx][mealType] === "Зарахувати"
+                ? "Не зараховувати"
+                : "Зарахувати";
+            state.saveLocal();
+            MealService.syncToFirestore(state.currentDate);
+            App.renderTable();
+          }
+        } else if (action === "editPerson") {
+          App.editPerson(idx);
+        } else if (action === "removePerson") {
+          App.removePerson(idx);
+        }
+      });
+    }
+
+    // Зміна підрозділу через фільтр
+    const unitSelect = document.getElementById("unitFilter");
+    if (unitSelect) {
+      unitSelect.addEventListener("change", (e) => {
+        state.selectedUnit = e.target.value;
+        App.renderTable();
+      });
+    }
+
+    // Оновлення статусу оффлайн при закритті/перезавантаженні сторінки
     window.addEventListener("beforeunload", () => {
       if (state.currentUser) {
         UserService.setUserOnlineStatus(state.currentUser.uid, false);
@@ -396,6 +436,59 @@ class App {
     if (totalD) totalD.innerText = countV;
   }
 
+  static editPerson(index) {
+    const list = state.getPersonnelForCurrentDate();
+    const person = list[index];
+    if (!person) return;
+
+    const editIndexEl = document.getElementById("editIndex");
+    const rankEl = document.getElementById("newRank");
+    const nameEl = document.getElementById("newName");
+    const unitEl = document.getElementById("newUnit");
+    const saveBtn = document.getElementById("saveBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
+    const formTitle = document.getElementById("formTitle");
+
+    if (editIndexEl) editIndexEl.value = index;
+    if (rankEl) rankEl.value = person.rank || "";
+    if (nameEl) nameEl.value = person.name || "";
+    if (unitEl) unitEl.value = person.unit || "";
+
+    if (saveBtn) saveBtn.textContent = "Зберегти зміни";
+    if (cancelBtn) cancelBtn.style.display = "inline-block";
+    if (formTitle) formTitle.textContent = "✏️ Редагувати військовослужбовця";
+
+    App.toggleForm(true);
+  }
+
+  static async removePerson(index) {
+    const list = state.getPersonnelForCurrentDate();
+    if (!list[index]) return;
+
+    if (confirm(`Ви дійсно бажаєте видалити ${list[index].name}?`)) {
+      list.splice(index, 1);
+      state.setPersonnelForCurrentDate(list);
+      await MealService.syncToFirestore(state.currentDate);
+      App.updateUnitFilterOptions();
+      App.renderTable();
+    }
+  }
+
+  static toggleForm(forceOpen = false) {
+    const content = document.getElementById("formContent");
+    const icon = document.getElementById("toggleIcon");
+    if (!content) return;
+    const isHidden =
+      content.style.display === "none" || content.style.display === "";
+    if (isHidden || forceOpen) {
+      content.style.display = "block";
+      if (icon) icon.innerText = "➖";
+    } else {
+      content.style.display = "none";
+      if (icon) icon.innerText = "➕";
+    }
+  }
+
   static updateUnitFilterOptions() {
     const select = document.getElementById("unitFilter");
     if (!select) return;
@@ -452,5 +545,20 @@ window.saveProfile = async () => {
 window.approveUser = (uid) => UserService.approveUser(uid);
 window.deleteUser = (uid) => UserService.deleteUser(uid);
 window.logout = () => AuthService.logout();
+
+// Зв'язування з HTML-подіями
+window.onDateChange = () => App.handleDateChange();
+window.toggleForm = (force) => App.toggleForm(force);
+window.promptSearch = () => {
+  const q = prompt("Введіть текст для пошуку:");
+  if (q !== null) {
+    state.searchQuery = q.toLowerCase().trim();
+    App.renderTable();
+  }
+};
+window.resetSearch = () => {
+  state.searchQuery = "";
+  App.renderTable();
+};
 
 document.addEventListener("DOMContentLoaded", () => App.init());
