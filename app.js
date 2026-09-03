@@ -730,6 +730,22 @@ window.handlePDFUpload = async (event) => {
     return;
   }
 
+  // Словник місяців для парсингу дати
+  const monthMap = {
+    січня: "01",
+    лютого: "02",
+    березня: "03",
+    квітня: "04",
+    травня: "05",
+    червня: "06",
+    липня: "07",
+    серпня: "08",
+    вересня: "09",
+    жовтня: "10",
+    листопада: "11",
+    грудня: "12",
+  };
+
   try {
     let currentPersonnelList = [...state.getPersonnelForCurrentDate()];
     let totalAddedCount = 0;
@@ -739,12 +755,10 @@ window.handlePDFUpload = async (event) => {
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       let fullTextLines = [];
 
-      // 1. Спроба витягнути звичайний текст із PDF
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
 
-        // Погрупуємо елементи тексту по рядках (з похибкою Y <= 4px)
         let linesMap = {};
         textContent.items.forEach((item) => {
           const y = Math.round(item.transform[5] / 4) * 4;
@@ -752,7 +766,6 @@ window.handlePDFUpload = async (event) => {
           linesMap[y].push(item);
         });
 
-        // Сортуємо рядки зверху вниз, а елементи всередині рядка — зліва направо (по X)
         const sortedY = Object.keys(linesMap).sort((a, b) => b - a);
         sortedY.forEach((y) => {
           const rowItems = linesMap[y].sort(
@@ -765,20 +778,12 @@ window.handlePDFUpload = async (event) => {
           if (lineText) fullTextLines.push(lineText);
         });
 
-        // 2. ЯКЩО СТОРІНКА СКАНОБОВАНА (текст відсутній) -> Запускаємо Tesseract OCR
-        if (fullTextLines.join("").trim().length < 20) {
-          if (typeof Tesseract === "undefined") {
-            UI.showToast(
-              "Виявлено скан PDF, але Tesseract.js не підключено у HTML!",
-            );
-            continue;
-          }
-
-          UI.showToast(
-            `Розпізнавання сканованого PDF (${file.name})... Зачекайте.`,
-          );
-
-          // Рендеримо PDF на прихований Canvas для OCR
+        // Якщо це скан (тексту майже немає) -> Tesseract OCR
+        if (
+          fullTextLines.join("").trim().length < 20 &&
+          typeof Tesseract !== "undefined"
+        ) {
+          UI.showToast(`Розпізнавання сканованого PDF (${file.name})...`);
           const viewport = page.getViewport({ scale: 2.0 });
           const canvas = document.createElement("canvas");
           const context = canvas.getContext("2d");
@@ -788,7 +793,6 @@ window.handlePDFUpload = async (event) => {
           await page.render({ canvasContext: context, viewport: viewport })
             .promise;
 
-          // Розпізнаємо текст
           const worker = await Tesseract.createWorker("ukr");
           const {
             data: { text },
@@ -806,111 +810,168 @@ window.handlePDFUpload = async (event) => {
 
       const fullText = fullTextLines.join("\n");
 
-      // --- ПАРСИНГ ДАНИХ (Визначення дати, підрозділу та бійців) ---
+      // 1. Пошук дати (цифрами ДД.ММ.ГГГГ або словесно «29» липня 2026)
+      let formattedDate = "";
+      const numericDate = fullText.match(/(\d{2}\.\d{2}\.\d{4})/);
+      const textDate = fullText.match(
+        /«?(\d{1,2})»?\s+([а-яА-Яа-щШЩЬЮЯєЇїІіґҐ]+)\s+(\d{4})/i,
+      );
 
-      // Дата
-      const dateMatch = fullText.match(/(\d{2}\.\d{2}\.\d{4})/);
-      if (dateMatch) {
-        const [d, m, y] = dateMatch[1].split(".");
-        const formattedDate = `${y}-${m}-${d}`;
-        if (state.currentDate !== formattedDate) {
-          state.currentDate = formattedDate;
-          const dateInput = document.getElementById("reportDate");
-          if (dateInput) dateInput.value = formattedDate;
-          currentPersonnelList = [...state.getPersonnelForCurrentDate()];
-        }
+      if (numericDate) {
+        const [d, m, y] = numericDate[1].split(".");
+        formattedDate = `${y}-${m}-${d}`;
+      } else if (textDate) {
+        const day = textDate[1].padStart(2, "0");
+        const month = monthMap[textDate[2].toLowerCase()] || "01";
+        const year = textDate[3];
+        formattedDate = `${year}-${month}-${day}`;
       }
 
-      // Підрозділ
+      if (formattedDate && state.currentDate !== formattedDate) {
+        state.currentDate = formattedDate;
+        const dateInput = document.getElementById("reportDate");
+        if (dateInput) dateInput.value = formattedDate;
+        currentPersonnelList = [...state.getPersonnelForCurrentDate()];
+      }
+
+      // 2. Визначення підрозділу
       let extractedUnit = "";
       const unitMatch = fullText.match(
-        /ЗАЯВКА\s+(?:на харчування\s+)?([^\n\r]+?)(?=\s+на харчування|\s+\d{2}\.\d{2}\.\d{4}|$)/i,
+        /(?:ЗАЯВКА\s+)?(?:на забезпечення харчуванням\s+)?([^\n\r]+?)(?=\s+на\s+|\s+«?\d+|\s+\d{2}\.\d{2}\.\d{4}|$)/i,
       );
-      if (unitMatch && unitMatch[1]) {
+      if (
+        unitMatch &&
+        unitMatch[1] &&
+        !unitMatch[1].toLowerCase().includes("заявка")
+      ) {
         extractedUnit = unitMatch[1].trim();
       }
 
       if (!extractedUnit || extractedUnit.toUpperCase().includes("ЧВС")) {
         const userUnitInput = prompt(
-          `У файлі "${file.name}" вказано добовий наряд/ЧВС або підрозділ відсутній.\nВведіть назву підрозділу:`,
-          extractedUnit || "",
+          `У файлі "${file.name}" не вдалося чітко визначити підрозділ або вказано ЧВС.\nВведіть назву підрозділу:`,
+          extractedUnit || "ДнМО",
         );
         extractedUnit =
-          userUnitInput && userUnitInput.trim() ? userUnitInput.trim() : "ЧВС";
+          userUnitInput && userUnitInput.trim() ? userUnitInput.trim() : "ДнМО";
       }
 
-      // Бійці
-      const personRegex =
-        /(\d+)\.\s*([а-яА-Яа-щШЩЬЮЯєЇїІіґҐa-zA-Z\.\s]+?)\s+([А-ЯЩЬЮЯЄЇІҐA-Z\-'\s]{3,})\s+(зараховано|не\s*зараховано|-)\s+(зараховано|не\s*зараховано|-)\s+(зараховано|не\s*зараховано|-)/gi;
+      // 3. Універсальний парсинг таблиці (звання може бути відсутнє)
+      // Групуємо рядки, які починаються з номера (1, 2, 3...)
+      const lines = fullText.split("\n");
+      const recordRegex = /^(\d+)[\.\s]+(.+)$/;
 
-      let match;
-      while ((match = personRegex.exec(fullText)) !== null) {
-        let rawRank = match[2].trim().toLowerCase();
-        const rawName = match[3].trim();
-        const s = match[4].toLowerCase().includes("зараховано")
-          ? "Зарахувати"
-          : "Не зараховувати";
-        const o = match[5].toLowerCase().includes("зараховано")
-          ? "Зарахувати"
-          : "Не зараховувати";
-        const v = match[6].toLowerCase().includes("зараховано")
-          ? "Зарахувати"
-          : "Не зараховувати";
+      for (let line of lines) {
+        const match = line.match(recordRegex);
+        if (!match) continue;
 
-        let finalRank = "";
-        if (window.rankDictionary && window.rankDictionary[rawRank]) {
-          finalRank = window.rankDictionary[rawRank];
-        } else {
-          const userRankChoice = prompt(
-            `Звання "${rawRank}" для бійця ${rawName} не розпізнано.\nВведіть звання або залишіть як є:`,
-            rawRank,
-          );
-          finalRank =
-            userRankChoice && userRankChoice.trim()
-              ? userRankChoice.trim()
-              : rawRank;
-          if (!window.rankDictionary) window.rankDictionary = {};
-          window.rankDictionary[rawRank] = finalRank;
-        }
+        const content = match[2].trim();
 
-        const existingIndex = currentPersonnelList.findIndex(
-          (p) =>
-            (p.name || p.fullName || "").toLowerCase() ===
-            rawName.toLowerCase(),
+        // Витягуємо статуси сніданку, обіду та вечері (зарахувати / не зарахувати)
+        const statusMatches = Array.from(
+          content.matchAll(
+            /(зарахувати|не\s*зарахувати| зараховано|не\s*зараховано|-)/gi,
+          ),
         );
 
-        if (existingIndex !== -1) {
-          const shouldReplace = confirm(
-            `Військовослужбовець "${rawName}" вже є у списку.\nЗамінити дані?`,
+        if (statusMatches.length >= 3) {
+          const sText =
+            statusMatches[statusMatches.length - 3][0].toLowerCase();
+          const oText =
+            statusMatches[statusMatches.length - 2][0].toLowerCase();
+          const vText =
+            statusMatches[statusMatches.length - 1][0].toLowerCase();
+
+          const s =
+            (sText.includes("зарахувати") || sText.includes("зараховано")) &&
+            !sText.includes("не")
+              ? "Зарахувати"
+              : "Не зараховувати";
+          const o =
+            (oText.includes("зарахувати") || oText.includes("зараховано")) &&
+            !oText.includes("не")
+              ? "Зарахувати"
+              : "Не зараховувати";
+          const v =
+            (vText.includes("зарахувати") || vText.includes("зараховано")) &&
+            !vText.includes("не")
+              ? "Зарахувати"
+              : "Не зараховувати";
+
+          // Обрізаємо від тексту статуси харчування, щоб залишити лише ПІБ та звання
+          const firstStatusIndex =
+            statusMatches[statusMatches.length - 3].index;
+          const nameAndRank = content.substring(0, firstStatusIndex).trim();
+
+          // Перевіряємо, чи є у тексті звання чи лише ПІБ
+          let finalRank = "солдат";
+          let rawName = nameAndRank;
+
+          // Дивимося, чи перші слова збігаються зі званням
+          const words = nameAndRank.split(/\s+/);
+          let detectedRankKey = "";
+
+          if (words.length > 2) {
+            const possibleRank = words
+              .slice(0, words.length - 3)
+              .join(" ")
+              .toLowerCase();
+            if (window.rankDictionary && window.rankDictionary[possibleRank]) {
+              detectedRankKey = possibleRank;
+              finalRank = window.rankDictionary[possibleRank];
+              rawName = words.slice(words.length - 3).join(" ");
+            }
+          }
+
+          if (!detectedRankKey && words.length > 3) {
+            // Якщо є додатковий текст/звання, якого немає в словнику
+            const possibleRank = words[0].toLowerCase();
+            if (window.rankDictionary && window.rankDictionary[possibleRank]) {
+              finalRank = window.rankDictionary[possibleRank];
+              rawName = words.slice(1).join(" ");
+            }
+          }
+
+          // Перевірка на дублікати
+          const existingIndex = currentPersonnelList.findIndex(
+            (p) =>
+              (p.name || p.fullName || "").toLowerCase() ===
+              rawName.toLowerCase(),
           );
 
-          if (shouldReplace) {
-            currentPersonnelList[existingIndex] = {
+          if (existingIndex !== -1) {
+            const shouldReplace = confirm(
+              `Військовослужбовець "${rawName}" вже є у списку.\nЗамінити дані?`,
+            );
+
+            if (shouldReplace) {
+              currentPersonnelList[existingIndex] = {
+                rank: finalRank,
+                name: rawName,
+                unit: extractedUnit,
+                s,
+                o,
+                v,
+              };
+              totalAddedCount++;
+            }
+          } else {
+            currentPersonnelList.push({
               rank: finalRank,
               name: rawName,
               unit: extractedUnit,
               s,
               o,
               v,
-            };
+            });
             totalAddedCount++;
           }
-        } else {
-          currentPersonnelList.push({
-            rank: finalRank,
-            name: rawName,
-            unit: extractedUnit,
-            s,
-            o,
-            v,
-          });
-          totalAddedCount++;
         }
       }
     }
 
     if (totalAddedCount === 0) {
-      UI.showToast("Не вдалося знайти або витягнути дані з PDF.");
+      UI.showToast("Не вдалося знайти табличні дані у завантаженому PDF!");
       return;
     }
 
@@ -920,7 +981,7 @@ window.handlePDFUpload = async (event) => {
     App.renderTable();
 
     UI.showToast(
-      `Успішно опрацьовано! Додано/оновлено записів: ${totalAddedCount}`,
+      `Успішно імпортовано! Додано/оновлено записів: ${totalAddedCount}`,
     );
   } catch (err) {
     console.error("Помилка обробки PDF:", err);
