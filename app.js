@@ -684,9 +684,33 @@ window.exportToExcel = () => {
   XLSX.writeFile(workbook, `Харчування_${state.currentDate}.xlsx`);
 };
 
+// Глобальний словник для розпізнавання та стандартизації скорочень звань
+if (!window.rankDictionary) {
+  window.rankDictionary = {
+    "солд.": "солдат",
+    солд: "солдат",
+    "ст. солд.": "старший солдат",
+    "ст.солд": "старший солдат",
+    "мол. с-нт": "молодший сержант",
+    "с-нт": "сержант",
+    "ст. с-нт": "старший сержант",
+    "головний с-нт": "головний сержант",
+    "штаб-с-нт": "штаб-сержант",
+    "майстер-с-нт": "майстер-сержант",
+    "мол. л-нт": "молодший лейтенант",
+    "л-нт": "лейтенант",
+    "ст. л-нт": "старший лейтенант",
+    капітан: "капітан",
+    майор: "майор",
+    підполковник: "підполковник",
+    полковник: "полковник",
+    гс: "головний сержант",
+  };
+}
+
 window.handlePDFUpload = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+  const files = Array.from(event.target.files);
+  if (!files || files.length === 0) return;
 
   if (typeof pdfjsLib === "undefined") {
     UI.showToast("Бібліотека PDF.js не завантажена!");
@@ -694,100 +718,163 @@ window.handlePDFUpload = async (event) => {
   }
 
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let fullTextLines = [];
+    // Отримуємо поточний список, щоб додавати нові записи, а не перезаписувати
+    let currentPersonnelList = [...state.getPersonnelForCurrentDate()];
+    let totalAddedCount = 0;
 
-    // Зчитуємо текст посторінково та розбиваємо на рядки
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
+    for (const file of files) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullTextLines = [];
 
-      // Групуємо елементи тексту по вісі Y (рядок)
-      let linesMap = {};
-      textContent.items.forEach((item) => {
-        const y = Math.round(item.transform[5]);
-        if (!linesMap[y]) linesMap[y] = [];
-        linesMap[y].push(item.str);
-      });
+      // Зчитуємо текст посторінково
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
 
-      // Сортуємо рядки зверху вниз
-      const sortedY = Object.keys(linesMap).sort((a, b) => b - a);
-      sortedY.forEach((y) => {
-        const lineText = linesMap[y].join(" ").trim();
-        if (lineText) fullTextLines.push(lineText);
-      });
+        let linesMap = {};
+        textContent.items.forEach((item) => {
+          const y = Math.round(item.transform[5]);
+          if (!linesMap[y]) linesMap[y] = [];
+          linesMap[y].push(item.str);
+        });
+
+        const sortedY = Object.keys(linesMap).sort((a, b) => b - a);
+        sortedY.forEach((y) => {
+          const lineText = linesMap[y].join(" ").trim();
+          if (lineText) fullTextLines.push(lineText);
+        });
+      }
+
+      const fullText = fullTextLines.join("\n");
+
+      // 1. Визначення дати
+      const dateMatch = fullText.match(/(\d{2}\.\d{2}\.\d{4})/);
+      if (dateMatch) {
+        const [d, m, y] = dateMatch[1].split(".");
+        const formattedDate = `${y}-${m}-${d}`;
+        if (state.currentDate !== formattedDate) {
+          state.currentDate = formattedDate;
+          const dateInput = document.getElementById("reportDate");
+          if (dateInput) dateInput.value = formattedDate;
+          // Оновлюємо список під нову дату
+          currentPersonnelList = [...state.getPersonnelForCurrentDate()];
+        }
+      }
+
+      // 2. Визначення підрозділу (перевірка на ЧВС та добовий наряд)
+      let extractedUnit = "";
+      const unitMatch = fullText.match(
+        /ЗАЯВКА\s+(?:на харчування\s+)?([^\n\r]+?)(?=\s+на харчування|\s+\d{2}\.\d{2}\.\d{4}|$)/i,
+      );
+      if (unitMatch && unitMatch[1]) {
+        extractedUnit = unitMatch[1].trim();
+      }
+
+      // Якщо підрозділ відсутній або містить "ЧВС" (добовий наряд) — запитуємо у користувача
+      if (!extractedUnit || extractedUnit.toUpperCase().includes("ЧВС")) {
+        const userUnitInput = prompt(
+          `У файлі "${file.name}" вказано добовий наряд/ЧВС або підрозділ відсутній.\nВведіть назву підрозділу:`,
+          extractedUnit || "",
+        );
+        extractedUnit =
+          userUnitInput && userUnitInput.trim() ? userUnitInput.trim() : "ЧВС";
+      }
+
+      // 3. Пошук та обробка військовослужбовців
+      const personRegex =
+        /(\d+)\.\s*([а-яА-Яа-щШЩЬЮЯєЇїІіґҐa-zA-Z\.\s]+?)\s+([А-ЯЩЬЮЯЄЇІҐA-Z\-'\s]{3,})\s+(зараховано|не\s*зараховано|-)\s+(зараховано|не\s*зараховано|-)\s+(зараховано|не\s*зараховано|-)/gi;
+
+      let match;
+      while ((match = personRegex.exec(fullText)) !== null) {
+        let rawRank = match[2].trim().toLowerCase();
+        const rawName = match[3].trim();
+        const s = match[4].toLowerCase().includes("зараховано")
+          ? "Зарахувати"
+          : "Не зараховувати";
+        const o = match[5].toLowerCase().includes("зараховано")
+          ? "Зарахувати"
+          : "Не зараховувати";
+        const v = match[6].toLowerCase().includes("зараховано")
+          ? "Зарахувати"
+          : "Не зараховувати";
+
+        // Обробка звання через словник
+        let finalRank = "";
+        if (window.rankDictionary[rawRank]) {
+          finalRank = window.rankDictionary[rawRank];
+        } else {
+          // Якщо звання невідоме або скорочене
+          const userRankChoice = prompt(
+            `Звання "${rawRank}" для бійця ${rawName} не розпізнано.\n` +
+              `Натисніть OK, щоб залишити як є, або введіть повну назву звання:`,
+            rawRank,
+          );
+          finalRank =
+            userRankChoice && userRankChoice.trim()
+              ? userRankChoice.trim()
+              : rawRank;
+          // Фіксуємо у словнику на майбутнє
+          window.rankDictionary[rawRank] = finalRank;
+        }
+
+        // Перевірка на дублікати за ПІБ
+        const existingIndex = currentPersonnelList.findIndex(
+          (p) =>
+            (p.name || p.fullName || "").toLowerCase() ===
+            rawName.toLowerCase(),
+        );
+
+        if (existingIndex !== -1) {
+          const shouldReplace = confirm(
+            `Військовослужбовець "${rawName}" вже є у списку.\n` +
+              `Натисніть "ОК", щоб замінити дані, або "Скасувати", щоб пропустити.`,
+          );
+
+          if (shouldReplace) {
+            currentPersonnelList[existingIndex] = {
+              rank: finalRank,
+              name: rawName,
+              unit: extractedUnit,
+              s: s,
+              o: o,
+              v: v,
+            };
+            totalAddedCount++;
+          }
+        } else {
+          currentPersonnelList.push({
+            rank: finalRank,
+            name: rawName,
+            unit: extractedUnit,
+            s: s,
+            o: o,
+            v: v,
+          });
+          totalAddedCount++;
+        }
+      }
     }
 
-    const fullText = fullTextLines.join("\n");
-
-    // 1. Пошук підрозділу (наприклад: "ЗАЯВКА відділу спеціальних дій")
-    let extractedUnit = "-";
-    const unitMatch = fullText.match(
-      /ЗАЯВКА\s+(?:на харчування\s+)?([^\n\r]+?)(?=\s+на харчування|\s+\d{2}\.\d{2}\.\d{4}|$)/i,
-    );
-    if (unitMatch && unitMatch[1]) {
-      extractedUnit = unitMatch[1].trim();
-    }
-
-    // 2. Пошук дати (формат ДД.ММ.ГГГГ)
-    const dateMatch = fullText.match(/(\d{2}\.\d{2}\.\d{4})/);
-    if (dateMatch) {
-      const [d, m, y] = dateMatch[1].split(".");
-      const formattedDate = `${y}-${m}-${d}`;
-      state.currentDate = formattedDate;
-      const dateInput = document.getElementById("reportDate");
-      if (dateInput) dateInput.value = formattedDate;
-    }
-
-    // 3. Парсинг списку військовослужбовців з таблиці
-    const parsedPersonnel = [];
-
-    // Регулярний вираз під номери "1.", "2.", "3." та поля "зараховано"
-    const personRegex =
-      /(\d+)\.\s*([а-яА-Яа-щШЩЬЮЯєЇїІіґҐa-zA-Z\.\s]+?)\s+([А-ЯЩЬЮЯЄЇІҐA-Z\-'\s]{3,})\s+(зараховано|не\s*зараховано|-)\s+(зараховано|не\s*зараховано|-)\s+(зараховано|не\s*зараховано|-)/gi;
-
-    let match;
-    while ((match = personRegex.exec(fullText)) !== null) {
-      const rank = match[2].trim();
-      const name = match[3].trim();
-      const s = match[4].toLowerCase().includes("зараховано")
-        ? "Зарахувати"
-        : "Не зараховувати";
-      const o = match[5].toLowerCase().includes("зараховано")
-        ? "Зарахувати"
-        : "Не зараховувати";
-      const v = match[6].toLowerCase().includes("зараховано")
-        ? "Зарахувати"
-        : "Не зараховувати";
-
-      parsedPersonnel.push({
-        rank: rank || "солдат",
-        name: name,
-        unit: extractedUnit,
-        s: s,
-        o: o,
-        v: v,
-      });
-    }
-
-    if (parsedPersonnel.length === 0) {
-      UI.showToast("Не вдалося знайти табличні дані у завантаженому PDF!");
+    if (totalAddedCount === 0) {
+      UI.showToast("Жодних нових даних не було додано або розпізнано.");
       return;
     }
 
-    // Збереження та оновлення інтерфейсу
-    state.setPersonnelForCurrentDate(parsedPersonnel);
+    // Збереження оновленого списку
+    state.setPersonnelForCurrentDate(currentPersonnelList);
     await MealService.syncToFirestore(state.currentDate);
     App.updateUnitFilterOptions();
     App.renderTable();
 
-    UI.showToast(`Успішно імпортовано ${parsedPersonnel.length} осіб з PDF!`);
+    UI.showToast(
+      `Успішно опрацьовано файли! Додано/оновлено записів: ${totalAddedCount}`,
+    );
   } catch (err) {
-    console.error("Помилка зчитування PDF:", err);
-    UI.showToast("Помилка при обробці PDF-файлу.");
+    console.error("Помилка обробки PDF:", err);
+    UI.showToast("Помилка при обробці PDF-файлів.");
   } finally {
-    event.target.value = ""; // Очищаємо input для повторного вибору
+    event.target.value = "";
   }
 };
 

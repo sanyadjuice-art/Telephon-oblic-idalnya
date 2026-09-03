@@ -51,7 +51,7 @@
   <!-- 2. HTML-блок для завантаження PDF-заявки -->
 <div class="card file-controls">
   <label for="pdfFileInput"><b>📄 Завантажити заявку (.pdf):</b></label>
-  <input type="file" id="pdfFileInput" accept=".pdf,application/pdf" style="display: none;" onchange="handlePDFUpload(event)">
+  <input type="file" id="pdfFileInput" accept=".pdf,application/pdf" multiple style="display: none;" onchange="handlePDFUpload(event)">
   <button type="button" class="btn btn-file" onclick="document.getElementById('pdfFileInput').click()">
     📂 Обрати PDF-заявку
   </button>
