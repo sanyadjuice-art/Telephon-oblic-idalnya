@@ -398,17 +398,30 @@ class App {
     if (!tbody) return;
 
     tbody.innerHTML = "";
-    const list = [...state.getPersonnelForCurrentDate()];
-    list.sort((a, b) => (a.unit || "").localeCompare(b.unit || "", "uk"));
+
+    // Отримуємо початковий масив із збереженням оригінальних індексів
+    const originalList = state.getPersonnelForCurrentDate();
+
+    // Створюємо масив об'єктів разом з їх початковими індексами
+    const indexedList = originalList.map((person, index) => ({
+      person,
+      originalIndex: index,
+    }));
+
+    // Сортуємо копію за підрозділом для відображення
+    indexedList.sort((a, b) =>
+      (a.person.unit || "").localeCompare(b.person.unit || "", "uk"),
+    );
 
     let filteredIdx = 0;
     let [countS, countO, countV] = [0, 0, 0];
 
-    list.forEach((person, originalIndex) => {
+    indexedList.forEach(({ person, originalIndex }) => {
       const personName = person.name || person.fullName || "";
       const personRank = person.rank || "-";
       const personUnit = person.unit || "-";
 
+      // Фільтрація по пошуку та підрозділу
       if (
         state.searchQuery &&
         !personName.toLowerCase().includes(state.searchQuery) &&
@@ -429,20 +442,20 @@ class App {
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${filteredIdx}</td>
-        <td>${UI.escapeHtml(personRank)}</td>
-        <td style="text-align: left; font-weight: 600;">${UI.escapeHtml(personName)}</td>
-        <td>${UI.escapeHtml(personUnit)}</td>
-        <td><button class="btn-meal ${sActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="s">${sActive ? "Зарахований" : "Незарахований"}</button></td>
-        <td><button class="btn-meal ${oActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="o">${oActive ? "Зарахований" : "Незарахований"}</button></td>
-        <td><button class="btn-meal ${vActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="v">${vActive ? "Зарахований" : "Незарахований"}</button></td>
-        <td>
-          <div class="action-buttons">
-            <button class="btn-warning" data-action="editPerson" data-idx="${originalIndex}">✎</button>
-            <button class="btn-danger" data-action="removePerson" data-idx="${originalIndex}">X</button>
-          </div>
-        </td>
-      `;
+      <td>${filteredIdx}</td>
+      <td>${UI.escapeHtml(personRank)}</td>
+      <td style="text-align: left; font-weight: 600;">${UI.escapeHtml(personName)}</td>
+      <td>${UI.escapeHtml(personUnit)}</td>
+      <td><button class="btn-meal ${sActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="s">${sActive ? "Зарахований" : "Незарахований"}</button></td>
+      <td><button class="btn-meal ${oActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="o">${oActive ? "Зарахований" : "Незарахований"}</button></td>
+      <td><button class="btn-meal ${vActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="v">${vActive ? "Зарахований" : "Незарахований"}</button></td>
+      <td>
+        <div class="action-buttons">
+          <button class="btn-warning" data-action="editPerson" data-idx="${originalIndex}">✎</button>
+          <button class="btn-danger" data-action="removePerson" data-idx="${originalIndex}">X</button>
+        </div>
+      </td>
+    `;
       tbody.appendChild(tr);
     });
 
