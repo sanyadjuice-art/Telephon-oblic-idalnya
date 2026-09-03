@@ -722,209 +722,57 @@ if (!window.rankDictionary) {
 }
 
 window.handlePDFUpload = async (event) => {
-  const files = Array.from(event.target.files);
-  if (!files || files.length === 0) return;
+  const file = event.target.files[0];
+  if (!file) return;
 
-  if (typeof pdfjsLib === "undefined") {
-    UI.showToast("Бібліотека PDF.js не завантажена!");
-    return;
-  }
+  const formData = new FormData();
+  formData.append("file", file);
 
-  const monthMap = {
-    січня: "01",
-    лютого: "02",
-    березня: "03",
-    квітня: "04",
-    травня: "05",
-    червня: "06",
-    липня: "07",
-    серпня: "08",
-    вересня: "09",
-    жовтня: "10",
-    листопада: "11",
-    грудня: "12",
-  };
+  UI.showToast("Обробка PDF через Python...");
 
   try {
-    let currentPersonnelList = [...state.getPersonnelForCurrentDate()];
-    let totalAddedCount = 0;
+    const response = await fetch(
+      "https://pdf-parser-dcq3.onrender.com/parse-pdf",
+      {
+        method: "POST",
+        body: formData,
+      },
+    );
 
-    for (const file of files) {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let fullTextLines = [];
+    if (!response.ok) {
+      throw new Error(`Помилка сервера: ${response.status}`);
+    }
 
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
+    const data = await response.json();
 
-        let linesMap = {};
-        textContent.items.forEach((item) => {
-          const y = Math.round(item.transform[5] / 4) * 4; // Точне об'єднання тексту за віссю Y
-          if (!linesMap[y]) linesMap[y] = [];
-          linesMap[y].push(item);
-        });
+    if (data.date) {
+      state.currentDate = data.date;
+      const dateInput = document.getElementById("reportDate");
+      if (dateInput) dateInput.value = data.date;
+    }
 
-        const sortedY = Object.keys(linesMap).sort((a, b) => b - a);
-        sortedY.forEach((y) => {
-          const rowItems = linesMap[y].sort(
-            (a, b) => a.transform[4] - b.transform[4],
-          );
-          const lineText = rowItems
-            .map((it) => it.str)
-            .join(" ")
-            .trim();
-          if (lineText) fullTextLines.push(lineText);
-        });
-      }
+    let currentList = [...state.getPersonnelForCurrentDate()];
 
-      const fullText = fullTextLines.join("\n");
-
-      // 1. ПОШУК ДАТИ РАПОРТУ
-      let formattedDate = "";
-      const textDateMatch = fullText.match(
-        /ЗАЯВКА[\s\S]*?«?(\d{1,2})»?\s+([а-яА-Яа-щШЩЬЮЯєЇїІіґҐ]+)\s+(\d{4})/i,
+    data.personnel.forEach((newPerson) => {
+      const idx = currentList.findIndex(
+        (p) => p.name.toLowerCase() === newPerson.name.toLowerCase(),
       );
-
-      if (textDateMatch) {
-        const day = textDateMatch[1].padStart(2, "0");
-        const month = monthMap[textDateMatch[2].toLowerCase()] || "01";
-        const year = textDateMatch[3];
-        formattedDate = `${year}-${month}-${day}`;
+      if (idx !== -1) {
+        currentList[idx] = newPerson;
       } else {
-        const numericDate = fullText.match(/(\d{2}\.\d{2}\.\d{4})/);
-        if (numericDate) {
-          const [d, m, y] = numericDate[1].split(".");
-          formattedDate = `${y}-${m}-${d}`;
-        }
+        currentList.push(newPerson);
       }
+    });
 
-      if (formattedDate && state.currentDate !== formattedDate) {
-        state.currentDate = formattedDate;
-        const dateInput = document.getElementById("reportDate");
-        if (dateInput) dateInput.value = formattedDate;
-        currentPersonnelList = [...state.getPersonnelForCurrentDate()];
-      }
-
-      // 2. ВІДФІЛЬТРОВУЄМО ТІЛЬКИ ТАБЛИЧНІ РЯДКИ
-      let cleanRecords = [];
-      let currentRecord = "";
-
-      for (let line of fullTextLines) {
-        // Перевіряємо, чи починається рядок з цифри (1, 2, 3...)
-        const isStartOfRow = /^\d{1,2}[\s\.\)]/.test(line);
-
-        if (isStartOfRow) {
-          if (currentRecord) cleanRecords.push(currentRecord);
-          currentRecord = line;
-        } else if (currentRecord) {
-          // Якщо це розрив рядка (наприклад "Геннадійович"), додаємо його до поточного запису
-          if (
-            !line.includes("Старшина") &&
-            !line.includes("КЕП:") &&
-            !line.includes("Сертифікат") &&
-            !line.includes("Начальнику")
-          ) {
-            currentRecord += " " + line;
-          } else {
-            cleanRecords.push(currentRecord);
-            currentRecord = "";
-          }
-        }
-      }
-      if (currentRecord) cleanRecords.push(currentRecord);
-
-      // 3. РОЗБІР КОЖНОГО ЗАПИСУ
-      cleanRecords.forEach((recordStr) => {
-        // Шукаємо варіанти зарахування/незарахування
-        const statuses = Array.from(
-          recordStr.matchAll(
-            /(зарахувати|не\s*зарахувати|незарахувати|зараховано|не\s*зараховано)/gi,
-          ),
-        );
-
-        let s = "Зарахувати",
-          o = "Зарахувати",
-          v = "Не зараховувати";
-
-        if (statuses.length >= 3) {
-          const sText = statuses[0][0].toLowerCase();
-          const oText = statuses[1][0].toLowerCase();
-          const vText = statuses[2][0].toLowerCase();
-
-          s =
-            sText.includes("зарахувати") && !sText.includes("не")
-              ? "Зарахувати"
-              : "Не зараховувати";
-          o =
-            oText.includes("зарахувати") && !oText.includes("не")
-              ? "Зарахувати"
-              : "Не зараховувати";
-          v =
-            vText.includes("зарахувати") && !vText.includes("не")
-              ? "Зарахувати"
-              : "Не зараховувати";
-        }
-
-        // Очищаємо ПІБ від номеру п/п та слів "зарахувати/не зарахувати"
-        let rawName = recordStr
-          .replace(/^\d{1,2}[\s\.\)]*/, "") // видаляємо номер "1 "
-          .replace(
-            /(зарахувати|не\s*зарахувати|незарахувати|зараховано|не\s*зараховано)/gi,
-            "",
-          ) // видаляємо статуси
-          .replace(/\s+/g, " ") // прибираємо зайві пробіли
-          .trim();
-
-        if (!rawName) return;
-
-        let finalRank = ""; // Звання залишаємо порожнім
-        const extractedUnit = "дивізіон"; // Коротка назва підрозділу
-
-        // Оновлюємо або додаємо в список
-        const existingIndex = currentPersonnelList.findIndex(
-          (p) =>
-            (p.name || p.fullName || "").toLowerCase() ===
-            rawName.toLowerCase(),
-        );
-
-        if (existingIndex !== -1) {
-          currentPersonnelList[existingIndex] = {
-            rank: finalRank,
-            name: rawName,
-            unit: extractedUnit,
-            s,
-            o,
-            v,
-          };
-        } else {
-          currentPersonnelList.push({
-            rank: finalRank,
-            name: rawName,
-            unit: extractedUnit,
-            s,
-            o,
-            v,
-          });
-        }
-        totalAddedCount++;
-      });
-    }
-
-    if (totalAddedCount === 0) {
-      UI.showToast("Не вдалося знайти або витягнути дані з PDF.");
-      return;
-    }
-
-    state.setPersonnelForCurrentDate(currentPersonnelList);
+    state.setPersonnelForCurrentDate(currentList);
     await MealService.syncToFirestore(state.currentDate);
     App.updateUnitFilterOptions();
     App.renderTable();
 
-    UI.showToast(`Успішно додано всі ${totalAddedCount} осіб!`);
+    UI.showToast(`Успішно оброблено! Зчитано ${data.personnel.length} осіб.`);
   } catch (err) {
-    console.error("Помилка обробки PDF:", err);
-    UI.showToast("Помилка при обробці PDF-файлів.");
+    console.error("Помилка PDF:", err);
+    UI.showToast("Не вдалося обробити PDF. Перевірте з'єднання з сервером.");
   } finally {
     event.target.value = "";
   }
