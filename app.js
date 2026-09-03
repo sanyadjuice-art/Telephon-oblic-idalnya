@@ -236,10 +236,12 @@ class UserService {
     if (confirm("Ви дійсно бажаєте видалити цього користувача з системи?")) {
       try {
         await deleteDoc(doc(db, "users", uid));
-        UI.showToast("Користувача видалено!");
+        UI.showToast("Профіль користувача успішно видалено з Firestore!");
       } catch (e) {
-        console.error("Помилка видалення:", e);
-        UI.showToast("Помилка видалення користувача");
+        console.error("Помилка при видаленні:", e);
+        UI.showToast(
+          "Помилка видалення! Перевірте правила безпеки Firestore (Security Rules).",
+        );
       }
     }
   }
