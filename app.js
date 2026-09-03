@@ -728,9 +728,16 @@ window.handlePDFUpload = async (event) => {
   const formData = new FormData();
   formData.append("file", file);
 
-  UI.showToast("Обробка PDF через Python...");
+  UI.showToast("З'єднання з Python-сервером (це може зайняти до 30 сек)...");
 
   try {
+    // Спочатку перевіряємо чи сервер прокинувся
+    try {
+      await fetch("https://pdf-parser-dcq3.onrender.com/", { method: "GET" });
+    } catch (e) {
+      console.log("Сервер прокидається...");
+    }
+
     const response = await fetch(
       "https://pdf-parser-dcq3.onrender.com/parse-pdf",
       {
@@ -744,6 +751,10 @@ window.handlePDFUpload = async (event) => {
     }
 
     const data = await response.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
 
     if (data.date) {
       state.currentDate = data.date;
@@ -772,7 +783,9 @@ window.handlePDFUpload = async (event) => {
     UI.showToast(`Успішно оброблено! Зчитано ${data.personnel.length} осіб.`);
   } catch (err) {
     console.error("Помилка PDF:", err);
-    UI.showToast("Не вдалося обробити PDF. Перевірте з'єднання з сервером.");
+    UI.showToast(
+      "Не вдалося обробити PDF. Зачекайте 10 секунд і спробуйте ще раз (сервер прокидається).",
+    );
   } finally {
     event.target.value = "";
   }
