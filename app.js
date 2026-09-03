@@ -696,19 +696,98 @@ window.handlePDFUpload = async (event) => {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let fullText = "";
+    let fullTextLines = [];
 
+    // Зчитуємо текст посторінково та розбиваємо на рядки
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
-      const pageText = textContent.items.map((item) => item.str).join(" ");
-      fullText += pageText + "\n";
+
+      // Групуємо елементи тексту по вісі Y (рядок)
+      let linesMap = {};
+      textContent.items.forEach((item) => {
+        const y = Math.round(item.transform[5]);
+        if (!linesMap[y]) linesMap[y] = [];
+        linesMap[y].push(item.str);
+      });
+
+      // Сортуємо рядки зверху вниз
+      const sortedY = Object.keys(linesMap).sort((a, b) => b - a);
+      sortedY.forEach((y) => {
+        const lineText = linesMap[y].join(" ").trim();
+        if (lineText) fullTextLines.push(lineText);
+      });
     }
 
-    UI.showToast("PDF успішно зчитано! Оброблено сторінок: " + pdf.numPages);
+    const fullText = fullTextLines.join("\n");
+
+    // 1. Пошук підрозділу (наприклад: "ЗАЯВКА відділу спеціальних дій")
+    let extractedUnit = "-";
+    const unitMatch = fullText.match(
+      /ЗАЯВКА\s+(?:на харчування\s+)?([^\n\r]+?)(?=\s+на харчування|\s+\d{2}\.\d{2}\.\d{4}|$)/i,
+    );
+    if (unitMatch && unitMatch[1]) {
+      extractedUnit = unitMatch[1].trim();
+    }
+
+    // 2. Пошук дати (формат ДД.ММ.ГГГГ)
+    const dateMatch = fullText.match(/(\d{2}\.\d{2}\.\d{4})/);
+    if (dateMatch) {
+      const [d, m, y] = dateMatch[1].split(".");
+      const formattedDate = `${y}-${m}-${d}`;
+      state.currentDate = formattedDate;
+      const dateInput = document.getElementById("reportDate");
+      if (dateInput) dateInput.value = formattedDate;
+    }
+
+    // 3. Парсинг списку військовослужбовців з таблиці
+    const parsedPersonnel = [];
+
+    // Регулярний вираз під номери "1.", "2.", "3." та поля "зараховано"
+    const personRegex =
+      /(\d+)\.\s*([а-яА-Яа-щШЩЬЮЯєЇїІіґҐa-zA-Z\.\s]+?)\s+([А-ЯЩЬЮЯЄЇІҐA-Z\-'\s]{3,})\s+(зараховано|не\s*зараховано|-)\s+(зараховано|не\s*зараховано|-)\s+(зараховано|не\s*зараховано|-)/gi;
+
+    let match;
+    while ((match = personRegex.exec(fullText)) !== null) {
+      const rank = match[2].trim();
+      const name = match[3].trim();
+      const s = match[4].toLowerCase().includes("зараховано")
+        ? "Зарахувати"
+        : "Не зараховувати";
+      const o = match[5].toLowerCase().includes("зараховано")
+        ? "Зарахувати"
+        : "Не зараховувати";
+      const v = match[6].toLowerCase().includes("зараховано")
+        ? "Зарахувати"
+        : "Не зараховувати";
+
+      parsedPersonnel.push({
+        rank: rank || "солдат",
+        name: name,
+        unit: extractedUnit,
+        s: s,
+        o: o,
+        v: v,
+      });
+    }
+
+    if (parsedPersonnel.length === 0) {
+      UI.showToast("Не вдалося знайти табличні дані у завантаженому PDF!");
+      return;
+    }
+
+    // Збереження та оновлення інтерфейсу
+    state.setPersonnelForCurrentDate(parsedPersonnel);
+    await MealService.syncToFirestore(state.currentDate);
+    App.updateUnitFilterOptions();
+    App.renderTable();
+
+    UI.showToast(`Успішно імпортовано ${parsedPersonnel.length} осіб з PDF!`);
   } catch (err) {
     console.error("Помилка зчитування PDF:", err);
-    UI.showToast("Не вдалося розпізнати PDF-файл.");
+    UI.showToast("Помилка при обробці PDF-файлу.");
+  } finally {
+    event.target.value = ""; // Очищаємо input для повторного вибору
   }
 };
 
