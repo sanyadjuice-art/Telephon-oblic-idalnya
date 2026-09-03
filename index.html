@@ -6,12 +6,11 @@
   <title>Облік харчування особового складу</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
-  <!-- Бібліотека для експорту в Excel -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head> 
 <body>
 
-  <!-- МОДАЛЬНЕ ВІКНО АВТОРИЗАЦІЇ ТА ПРОФІЛЮ -->
+  <!-- МОДАЛЬНЕ ВІКНО АВТОРИЗАЦІЇ ТА ПРОФІЛЬ -->
   <div id="authModal" class="auth-modal-overlay" style="display: flex;">
     <div class="auth-card">
       <div class="trident">🔱</div>
@@ -31,7 +30,6 @@
         <p class="auth-desc">Введіть 6-значний код з SMS</p>
         <input type="text" id="smsCode" placeholder="XXXXXX" maxlength="6">
         <button class="btn-auth btn-success" onclick="verifyCode()">Підтвердити</button>
-        <button class="btn-link" onclick="resetAuthSteps()">Назад</button>
       </div>
 
       <!-- Крок 3: Заповнення профілю -->
@@ -48,7 +46,6 @@
   <!-- ОСНОВНИЙ КОНТЕНТ ДОДАТКУ -->
   <div id="appContent" style="display: none;">
     
-    <!-- Шапка додатку -->
     <header class="header-container">
       <div class="trident">🔱</div>
       <h2>Облік харчування особового складу</h2>
@@ -73,12 +70,12 @@
       <input type="date" id="reportDate" onchange="onDateChange()">
       
       <label for="unitFilter">Фільтр підрозділу:</label>
-      <select id="unitFilter" onchange="renderTable()">
+      <select id="unitFilter" onchange="App.renderTable()">
         <option value="ALL">Всі підрозділи</option>
       </select>
 
       <button class="btn-search" onclick="promptSearch()">Пошук 🔍</button>
-      <button id="resetSearchBtn" class="btn-reset" onclick="resetSearch()">Скинути пошук ❌</button>
+      <button id="resetSearchBtn" class="btn-reset" onclick="resetSearch()" style="display: none;">Скинути пошук ❌</button>
     </div>
 
     <!-- Форма додавання / редагування -->
@@ -88,7 +85,7 @@
         <span id="toggleIcon" class="icon">➕</span>
       </div>
 
-      <div id="formContent" class="form-content">
+      <div id="formContent" class="form-content" style="display: none;">
         <input type="hidden" id="editIndex" value="-1">
         <input type="text" id="newRank" list="ranksList" placeholder="Звання">
         <input type="text" id="newName" placeholder="Прізвище та ініціали (*)">
@@ -122,20 +119,15 @@
     <!-- Панель імпорту/експорту -->
     <div class="file-controls">
       <button class="btn btn-file" onclick="exportToExcel()">📊 Експорт в Excel</button>
-      <button class="btn btn-warning" onclick="saveDataToJson()">💾 Зберегти JSON</button>
-      <button class="btn btn-primary" onclick="loadFromFile()">📂 Завантажити з JSON</button>
-      <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileSelect(event)">
     </div>
 
   </div>
 
-  <!-- Випадаючі списки підказок для autocomplete -->
   <datalist id="ranksList"></datalist>
   <datalist id="unitsList"></datalist>
   <datalist id="authRanksList"></datalist>
   <datalist id="authUnitsList"></datalist>
 
-  <!-- Підключення основного модуля JS -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
