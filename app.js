@@ -213,8 +213,8 @@ class UserService {
           <td>${UI.escapeHtml(u.unit)}</td>
           <td>${u.isApproved ? "🟢 Дозволено" : "⏳ Очікує"}</td>
           <td>
-            ${!u.isApproved ? `<button class="btn btn-sm btn-success" data-admin-action="approve" data-uid="${u.uid}">Надати дозвіл</button>` : ""}
-            <button class="btn btn-sm btn-danger" data-admin-action="delete" data-uid="${u.uid}">Видалити</button>
+            ${!u.isApproved ? `<button class="btn btn-sm btn-success" onclick="approveUser('${u.uid}')">Надати дозвіл</button>` : ""}
+            <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.uid}')">Видалити</button>
           </td>
         `;
         adminTable.appendChild(tr);
@@ -227,7 +227,8 @@ class UserService {
       await updateDoc(doc(db, "users", uid), { isApproved: true });
       UI.showToast("Доступ користувачу надано!");
     } catch (e) {
-      console.error("Помилка при наданні доступу:", e);
+      console.error("Помилка надання доступу:", e);
+      UI.showToast("Помилка надання доступу");
     }
   }
 
@@ -237,7 +238,8 @@ class UserService {
         await deleteDoc(doc(db, "users", uid));
         UI.showToast("Користувача видалено!");
       } catch (e) {
-        console.error("Помилка при видаленні:", e);
+        console.error("Помилка видалення:", e);
+        UI.showToast("Помилка видалення користувача");
       }
     }
   }
@@ -322,21 +324,7 @@ class App {
   }
 
   static bindEvents() {
-    // Делегування дій для адмін-панелі
-    const adminTable = document.getElementById("adminUsersTable");
-    if (adminTable) {
-      adminTable.addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-admin-action]");
-        if (!btn) return;
-        const action = btn.dataset.adminAction;
-        const uid = btn.dataset.uid;
-
-        if (action === "approve") UserService.approveUser(uid);
-        if (action === "delete") UserService.deleteUser(uid);
-      });
-    }
-
-    // Делегування подій для дій у основній таблиці
+    // Делегування подій для дій у таблиці харчування
     const tbody = document.getElementById("tableBody");
     if (tbody) {
       tbody.addEventListener("click", (e) => {
@@ -366,7 +354,7 @@ class App {
       });
     }
 
-    // Фільтрація за підрозділом
+    // Зміна значення у фільтрі
     const unitSelect = document.getElementById("unitFilter");
     if (unitSelect) {
       unitSelect.addEventListener("change", (e) => {
@@ -536,7 +524,7 @@ class App {
   }
 }
 
-// Глобальні функції авторизації та пошуку
+// Реєстрація глобальних функцій у window для обробки атрибутів onclick=""
 window.loginUser = async () => {
   try {
     const email = document.getElementById("authEmail").value.trim();
