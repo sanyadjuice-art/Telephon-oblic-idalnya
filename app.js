@@ -731,14 +731,24 @@ window.handlePDFUpload = async (event) => {
   }
 
   const monthMap = {
-    "січня": "01", "лютого": "02", "березня": "03", "квітня": "04",
-    "травня": "05", "червня": "06", "липня": "07", "серпня": "08",
-    "вересня": "09", "жовтня": "10", "листопада": "11", "грудня": "12"
+    січня: "01",
+    лютого: "02",
+    березня: "03",
+    квітня: "04",
+    травня: "05",
+    червня: "06",
+    липня: "07",
+    серпня: "08",
+    вересня: "09",
+    жовтня: "10",
+    листопада: "11",
+    грудня: "12",
   };
 
   try {
     let currentPersonnelList = [...state.getPersonnelForCurrentDate()];
-    let totalAddedCount = 0;
+    let addedCount = 0;
+    let duplicateNames = [];
 
     for (const file of files) {
       const arrayBuffer = await file.arrayBuffer();
@@ -751,7 +761,6 @@ window.handlePDFUpload = async (event) => {
 
         let linesMap = {};
         textContent.items.forEach((item) => {
-          // Групування за координатою Y для точного збереження рядків
           const y = Math.round(item.transform[5] / 6) * 6;
           if (!linesMap[y]) linesMap[y] = [];
           linesMap[y].push(item);
@@ -759,18 +768,25 @@ window.handlePDFUpload = async (event) => {
 
         const sortedY = Object.keys(linesMap).sort((a, b) => b - a);
         sortedY.forEach((y) => {
-          const rowItems = linesMap[y].sort((a, b) => a.transform[4] - b.transform[4]);
-          const lineText = rowItems.map((it) => it.str).join(" ").trim();
+          const rowItems = linesMap[y].sort(
+            (a, b) => a.transform[4] - b.transform[4],
+          );
+          const lineText = rowItems
+            .map((it) => it.str)
+            .join(" ")
+            .trim();
           if (lineText) fullTextLines.push(lineText);
         });
       }
 
       const fullText = fullTextLines.join("\n");
 
-      // 1. Пошук дати заявки
+      // Пошук дати
       let formattedDate = "";
-      const textDateMatch = fullText.match(/ЗАЯВКА[\s\S]*?«?(\d{1,2})»?\s+([а-яА-Яа-щШЩЬЮЯєЇїІіґҐ]+)\s+(\d{4})/i);
-      
+      const textDateMatch = fullText.match(
+        /ЗАЯВКА[\s\S]*?«?(\d{1,2})»?\s+([а-яА-Яа-щШЩЬЮЯєЇїІіґҐ]+)\s+(\d{4})/i,
+      );
+
       if (textDateMatch) {
         const day = textDateMatch[1].padStart(2, "0");
         const month = monthMap[textDateMatch[2].toLowerCase()] || "01";
@@ -791,7 +807,6 @@ window.handlePDFUpload = async (event) => {
         currentPersonnelList = [...state.getPersonnelForCurrentDate()];
       }
 
-      // 2. Склеювання багаторядкових табличних даних
       let cleanRecords = [];
       let currentRecord = "";
 
@@ -802,7 +817,12 @@ window.handlePDFUpload = async (event) => {
           if (currentRecord) cleanRecords.push(currentRecord);
           currentRecord = line;
         } else if (currentRecord) {
-          if (!line.includes("Старшина") && !line.includes("КЕП:") && !line.includes("Сертифікат") && !line.includes("Начальнику")) {
+          if (
+            !line.includes("Старшина") &&
+            !line.includes("КЕП:") &&
+            !line.includes("Сертифікат") &&
+            !line.includes("Начальнику")
+          ) {
             currentRecord += " " + line;
           } else {
             cleanRecords.push(currentRecord);
@@ -812,58 +832,112 @@ window.handlePDFUpload = async (event) => {
       }
       if (currentRecord) cleanRecords.push(currentRecord);
 
-      // 3. Точний парсинг всіх 6 записів
       cleanRecords.forEach((recordStr) => {
-        const statuses = Array.from(recordStr.matchAll(/(зарахувати|не\s*зарахувати|незарахувати|зараховано|не\s*зараховано)/gi));
+        // Пропускаємо технічні рядки заголовків таблиць із PDF
+        if (
+          recordStr.toLowerCase().includes("осіб, а саме") ||
+          recordStr.toLowerCase().includes("прізвище")
+        ) {
+          return;
+        }
+
+        const statuses = Array.from(
+          recordStr.matchAll(
+            /(зарахувати|не\s*зарахувати|незараховувати|зараховано|не\s*зараховано)/gi,
+          ),
+        );
 
         if (statuses.length >= 3) {
           const sText = statuses[0][0].toLowerCase();
           const oText = statuses[1][0].toLowerCase();
           const vText = statuses[2][0].toLowerCase();
 
-          const s = sText.includes("зарахувати") && !sText.includes("не") ? "Зарахувати" : "Не зараховувати";
-          const o = oText.includes("зарахувати") && !oText.includes("не") ? "Зарахувати" : "Не зараховувати";
-          const v = vText.includes("зарахувати") && !vText.includes("не") ? "Зарахувати" : "Не зараховувати";
+          const s =
+            sText.includes("зарахувати") && !sText.includes("не")
+              ? "Зарахувати"
+              : "Не зараховувати";
+          const o =
+            oText.includes("зарахувати") && !oText.includes("не")
+              ? "Зарахувати"
+              : "Не зараховувати";
+          const v =
+            vText.includes("зарахувати") && !vText.includes("не")
+              ? "Зарахувати"
+              : "Не зараховувати";
 
           let rawName = recordStr
             .replace(/^\d{1,2}[\s\.\)]*/, "")
-            .replace(/(зарахувати|не\s*зарахувати|незарахувати|зараховано|не\s*зараховано)/gi, "")
+            .replace(
+              /(зарахувати|не\s*зарахувати|незараховувати|зараховано|не\s*зараховано)/gi,
+              "",
+            )
             .replace(/\s+/g, " ")
             .trim();
 
-          if (!rawName) return;
+          if (!rawName || rawName.length < 3) return;
 
           const finalRank = "";
           const extractedUnit = "дивізіон";
 
           const existingIndex = currentPersonnelList.findIndex(
-            (p) => (p.name || p.fullName || "").toLowerCase() === rawName.toLowerCase()
+            (p) =>
+              (p.name || p.fullName || "").toLowerCase() ===
+              rawName.toLowerCase(),
           );
 
           if (existingIndex !== -1) {
-            currentPersonnelList[existingIndex] = { rank: finalRank, name: rawName, unit: extractedUnit, s, o, v };
+            duplicateNames.push(rawName);
+            // Оновлюємо статус існуючого, але не дублюємо запис
+            currentPersonnelList[existingIndex] = {
+              rank: finalRank,
+              name: rawName,
+              unit: extractedUnit,
+              s,
+              o,
+              v,
+            };
           } else {
-            currentPersonnelList.push({ rank: finalRank, name: rawName, unit: extractedUnit, s, o, v });
+            currentPersonnelList.push({
+              rank: finalRank,
+              name: rawName,
+              unit: extractedUnit,
+              s,
+              o,
+              v,
+            });
+            addedCount++;
           }
-          totalAddedCount++;
         }
       });
     }
 
-    if (totalAddedCount === 0) {
-      UI.showToast("Не вдалося знайти або витягнути дані з PDF.");
+    if (addedCount === 0 && duplicateNames.length === 0) {
+      UI.showToast("Не вдалося знайти дані у завантажених файлах.");
       return;
     }
+
+    // Сортування списку в алфавітному порядку за ПІБ
+    currentPersonnelList.sort((a, b) => {
+      const nameA = (a.name || a.fullName || "").toLowerCase();
+      const nameB = (b.name || b.fullName || "").toLowerCase();
+      return nameA.localeCompare(nameB, "uk");
+    });
 
     state.setPersonnelForCurrentDate(currentPersonnelList);
     await MealService.syncToFirestore(state.currentDate);
     App.updateUnitFilterOptions();
     App.renderTable();
 
-    UI.showToast(`Успішно додано всі ${totalAddedCount} осіб!`);
+    if (duplicateNames.length > 0) {
+      UI.showToast(
+        `Увага: виявлено та оновлено дублікати (${duplicateNames.length}): ${duplicateNames[0]}...`,
+      );
+    } else {
+      UI.showToast(`Успішно додано нових осіб: ${addedCount}!`);
+    }
   } catch (err) {
     console.error("Помилка обробки PDF:", err);
-    UI.showToast("Помилка при обробці PDF-файлів.");
+    UI.showToast("Помилка при обробці файлів.");
   } finally {
     event.target.value = "";
   }
