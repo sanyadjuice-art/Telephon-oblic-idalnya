@@ -17,22 +17,27 @@ import {
   onSnapshot,
   collection,
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
 /**
  * КОНФІГУРАЦІЯ FIREBASE
  */
 const firebaseConfig = {
-  apiKey: "AIzaSyAAhZnsJYbTkRPnzZfpc4Z0r2U_eFL7BFo",
+  apiKey: "AIzaSyAAhZnsJYbTkRPnzZfpc420r2U_eEL7BFo",
   authDomain: "telephon-oblic-idalnya.firebaseapp.com",
+  databaseURL: "https://telephon-oblic-idalnya-default-rtdb.firebaseio.com",
   projectId: "telephon-oblic-idalnya",
   storageBucket: "telephon-oblic-idalnya.firebasestorage.app",
   messagingSenderId: "591688369928",
-  appId: "1:591688369928:web:89c8ef4ccdd474573a4ebd",
+  appId: "1:591688369928:web:09c8ef4ccdd474573a4ebd",
+  measurementId: "G-4YY48P80V3"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const database = getDatabase(app);
 
 // EMAIL ГОЛОВНОГО АДМІНІСТРАТОРА (Вкажіть вашу пошту)
 const ADMIN_EMAIL = "sanya.djuice@ukr.net";
