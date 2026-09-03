@@ -17,9 +17,6 @@ import {
   onSnapshot,
   collection,
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getDatabase } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
 /**
  * КОНФІГУРАЦІЯ FIREBASE
@@ -32,14 +29,15 @@ const firebaseConfig = {
   storageBucket: "telephon-oblic-idalnya.firebasestorage.app",
   messagingSenderId: "591688369928",
   appId: "1:591688369928:web:09c8ef4ccdd474573a4ebd",
-  measurementId: "G-4YY48P80V3"
+  measurementId: "G-4YY48P80V3",
 };
 
+// Ініціалізація продуктів Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const database = getDatabase(app);
+const db = getFirestore(app);
 
-// EMAIL ГОЛОВНОГО АДМІНІСТРАТОРА (Вкажіть вашу пошту)
+// EMAIL ГОЛОВНОГО АДМІНІСТРАТОРА
 const ADMIN_EMAIL = "sanya.djuice@ukr.net";
 
 class AppState {
@@ -148,8 +146,10 @@ class UserService {
 
       UI.toggleElement("authModal", false);
       UI.toggleElement("appContent", true);
-      document.getElementById("headerUserName").textContent =
-        `${state.userProfile.rank || ""} ${state.userProfile.fullName} (${state.userProfile.role === "admin" ? "АДМІН" : "Користувач"})`;
+      const headerUser = document.getElementById("headerUserName");
+      if (headerUser) {
+        headerUser.textContent = `${state.userProfile.rank || ""} ${state.userProfile.fullName} (${state.userProfile.role === "admin" ? "АДМІН" : "Користувач"})`;
+      }
 
       // Відображення панелі адміна
       if (state.userProfile.role === "admin") {
@@ -179,7 +179,7 @@ class UserService {
       fullName,
       unit: unit || "-",
       role: isAdmin ? "admin" : "client",
-      isApproved: isAdmin, // Адмін підтверджується одразу, інші чекають
+      isApproved: isAdmin,
       isOnline: true,
       lastSeen: new Date().toISOString(),
     };
@@ -199,7 +199,6 @@ class UserService {
     }
   }
 
-  // Для адміністратора: список усіх користувачів із кнопками керування
   static subscribeToAllUsersForAdmin() {
     const usersRef = collection(db, "users");
     state.unsubscribeAdminUsers = onSnapshot(usersRef, (snapshot) => {
@@ -209,7 +208,7 @@ class UserService {
       adminTable.innerHTML = "";
       snapshot.forEach((docSnap) => {
         const u = docSnap.data();
-        if (u.uid === state.currentUser.uid) return; // Не показувати самого себе
+        if (u.uid === state.currentUser.uid) return;
 
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -388,9 +387,13 @@ class App {
       tbody.appendChild(tr);
     });
 
-    document.getElementById("totalBreakfast").innerText = countS;
-    document.getElementById("totalLunch").innerText = countO;
-    document.getElementById("totalDinner").innerText = countV;
+    const totalB = document.getElementById("totalBreakfast");
+    const totalL = document.getElementById("totalLunch");
+    const totalD = document.getElementById("totalDinner");
+
+    if (totalB) totalB.innerText = countS;
+    if (totalL) totalL.innerText = countO;
+    if (totalD) totalD.innerText = countV;
   }
 
   static updateUnitFilterOptions() {
