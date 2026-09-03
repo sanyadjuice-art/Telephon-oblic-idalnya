@@ -731,7 +731,7 @@ window.handlePDFUpload = async (event) => {
   UI.showToast("Обробка PDF через Python-сервер...");
 
   try {
-    // URL вашого розгорнутого Python-сервісу (або локального http://127.0.0.1:8000/parse-pdf)
+    // Замініть URL на адресу вашого сервера (наприклад, ваш бекенд на Render або локальний http://127.0.0.1:8000/parse-pdf)
     const response = await fetch(
       "https://pdf-parser-dcq3.onrender.com/parse-pdf",
       {
@@ -750,7 +750,6 @@ window.handlePDFUpload = async (event) => {
       throw new Error(data.error);
     }
 
-    // Оновлення дати рапорту, якщо вона розпізнана
     if (data.date) {
       state.currentDate = data.date;
       const dateInput = document.getElementById("reportDate");
@@ -759,19 +758,17 @@ window.handlePDFUpload = async (event) => {
 
     let currentList = [...state.getPersonnelForCurrentDate()];
 
-    // Додавання/оновлення записів із захистом від дублікатів
     data.personnel.forEach((newPerson) => {
       const idx = currentList.findIndex(
         (p) => (p.name || "").toLowerCase() === newPerson.name.toLowerCase(),
       );
       if (idx !== -1) {
-        currentList[idx] = newPerson; // оновлюємо статуси для існуючого
+        currentList[idx] = newPerson;
       } else {
-        currentList.push(newPerson); // додаємо нового
+        currentList.push(newPerson);
       }
     });
 
-    // Сортування списку в алфавітному порядку за ПІБ
     currentList.sort((a, b) => {
       const nameA = (a.name || "").toLowerCase();
       const nameB = (b.name || "").toLowerCase();
@@ -783,19 +780,16 @@ window.handlePDFUpload = async (event) => {
     App.updateUnitFilterOptions();
     App.renderTable();
 
-    // Сповіщення про дублікати, якщо бекенд їх зафіксував
     if (data.duplicates && data.duplicates.length > 0) {
       UI.showToast(
-        `Увага: виявлено дублікати (${data.duplicates.length}). Статуси оновлено автоматично.`,
+        `Увага: виявлено дублікати (${data.duplicates.length}). Статуси оновлено.`,
       );
     } else {
-      UI.showToast(
-        `Успішно опрацьовано! Додано/оновлено осіб: ${data.personnel.length}`,
-      );
+      UI.showToast(`Успішно опрацьовано! Осіб: ${data.personnel.length}`);
     }
   } catch (err) {
     console.error("Помилка обробки PDF:", err);
-    UI.showToast("Не вдалося обробити PDF. Перевірте з'єднання із сервером.");
+    UI.showToast("Не вдалося обробити PDF через сервер.");
   } finally {
     event.target.value = "";
   }
