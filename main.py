@@ -54,7 +54,35 @@ async def parse_pdf(file: UploadFile = File(...)):
                             continue
 
                         fio = str(row[1]).replace('\n', ' ').strip() if row[1] else ""
+                        
+                        # Надійний фільтр для технічних заголовків
                         if not fio or "осіб, а саме" in fio.lower() or "прізвище" in fio.lower():
+                            continue
+                        
+                        s_status = "Зарахувати" if "зарахувати" in str(row[2]).lower() and "не" not in str(row[2]).lower() else "Не зараховувати"
+                        o_status = "Зарахувати" if "зарахувати" in str(row[3]).lower() and "не" not in str(row[3]).lower() else "Не зараховувати"
+                        v_status = "Зарахувати" if "зарахувати" in str(row[4]).lower() and "не" not in str(row[4]).lower() else "Не зараховувати"
+
+                        records.append({
+                            "rank": "",
+                            "name": fio,
+                            "unit": "дивізіон",
+                            "s": s_status,
+                            "o": o_status,
+                            "v": v_status
+                        })
+                    for row in table:
+                        if not row or len(row) < 5:
+                            continue
+                        
+                        row_num = str(row[0]).strip() if row[0] else ""
+                        if not row_num.isdigit():
+                            continue
+
+                        fio = str(row[1]).replace('\n', ' ').strip() if row[1] else ""
+                        
+                        # Відсікаємо шапку таблиці та службові рядки
+                        if not fio or "осіб, а саме" in fio.lower() or "прізвище" in fio.lower() or "п/п" in fio.lower():
                             continue
                         
                         s_status = "Зарахувати" if "зарахувати" in str(row[2]).lower() and "не" not in str(row[2]).lower() else "Не зараховувати"
