@@ -22,14 +22,14 @@ import {
  * КОНФІГУРАЦІЯ FIREBASE
  */
 const firebaseConfig = {
-  apiKey: "AIzaSyAAhZnsJYbTkRPnzZfpc420r2U_eEL7BFo",
+  apiKey: "AIzaSyAAhZnsJYbTkRPnzZfpc4Z0r2U_eEL7BFo",
   authDomain: "telephon-oblic-idalnya.firebaseapp.com",
   databaseURL: "https://telephon-oblic-idalnya-default-rtdb.firebaseio.com",
   projectId: "telephon-oblic-idalnya",
   storageBucket: "telephon-oblic-idalnya.firebasestorage.app",
   messagingSenderId: "591688369928",
   appId: "1:591688369928:web:09c8ef4ccdd474573a4ebd",
-  measurementId: "G-4YY48P80V3",
+  measurementId: "G-4YY48P80V3"
 };
 
 // Ініціалізація продуктів Firebase
