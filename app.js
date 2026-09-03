@@ -32,12 +32,10 @@ const firebaseConfig = {
   measurementId: "G-4YY48P80V3",
 };
 
-// Ініціалізація продуктів Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// EMAIL ГОЛОВНОГО АДМІНІСТРАТОРА
 const ADMIN_EMAIL = "sanya.djuice@ukr.net";
 
 class AppState {
@@ -78,7 +76,8 @@ const UI = {
     if (el) el.style.display = show ? "block" : "none";
   },
   escapeHtml(str) {
-    return String(str ?? "").replace(/[&<>"']/g, (match) => {
+    if (str === null || str === undefined || str === "") return "-";
+    return String(str).replace(/[&<>"']/g, (match) => {
       const escapeMap = {
         "&": "&amp;",
         "<": "&lt;",
@@ -127,14 +126,12 @@ class UserService {
     if (userDoc.exists()) {
       state.userProfile = userDoc.data();
 
-      // Автоматичне надання прав адміна за Email
       if (user.email === ADMIN_EMAIL && state.userProfile.role !== "admin") {
         state.userProfile.role = "admin";
         state.userProfile.isApproved = true;
         await updateDoc(userDocRef, { role: "admin", isApproved: true });
       }
 
-      // Перевірка дозволу від адміністратора
       if (!state.userProfile.isApproved && state.userProfile.role !== "admin") {
         UI.toggleElement("authModal", true);
         UI.toggleElement("stepAuth", false);
@@ -151,7 +148,6 @@ class UserService {
         headerUser.textContent = `${state.userProfile.rank || ""} ${state.userProfile.fullName} (${state.userProfile.role === "admin" ? "АДМІН" : "Користувач"})`;
       }
 
-      // Відображення панелі адміна
       if (state.userProfile.role === "admin") {
         UI.toggleElement("adminPanel", true);
         this.subscribeToAllUsersForAdmin();
@@ -217,8 +213,8 @@ class UserService {
           <td>${UI.escapeHtml(u.unit)}</td>
           <td>${u.isApproved ? "🟢 Дозволено" : "⏳ Очікує"}</td>
           <td>
-            ${!u.isApproved ? `<button class="btn btn-sm btn-success" onclick="approveUser('${u.uid}')">Надати дозвіл</button>` : ""}
-            <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.uid}')">Видалити</button>
+            ${!u.isApproved ? `<button class="btn btn-sm btn-success" data-admin-action="approve" data-uid="${u.uid}">Надати дозвіл</button>` : ""}
+            <button class="btn btn-sm btn-danger" data-admin-action="delete" data-uid="${u.uid}">Видалити</button>
           </td>
         `;
         adminTable.appendChild(tr);
@@ -227,14 +223,22 @@ class UserService {
   }
 
   static async approveUser(uid) {
-    await updateDoc(doc(db, "users", uid), { isApproved: true });
-    UI.showToast("Доступ користувачу надано!");
+    try {
+      await updateDoc(doc(db, "users", uid), { isApproved: true });
+      UI.showToast("Доступ користувачу надано!");
+    } catch (e) {
+      console.error("Помилка при наданні доступу:", e);
+    }
   }
 
   static async deleteUser(uid) {
     if (confirm("Ви дійсно бажаєте видалити цього користувача з системи?")) {
-      await deleteDoc(doc(db, "users", uid));
-      UI.showToast("Користувача видалено!");
+      try {
+        await deleteDoc(doc(db, "users", uid));
+        UI.showToast("Користувача видалено!");
+      } catch (e) {
+        console.error("Помилка при видаленні:", e);
+      }
     }
   }
 }
@@ -260,7 +264,9 @@ class MealService {
     if (dates.length > 0) {
       const lastDate = dates[dates.length - 1];
       initialData = state.dbByDate[lastDate].map((p) => ({
-        ...p,
+        rank: p.rank || "солдат",
+        name: p.name || p.fullName || "Без імені",
+        unit: p.unit || "-",
         s: "Не зараховувати",
         o: "Не зараховувати",
         v: "Не зараховувати",
@@ -316,7 +322,21 @@ class App {
   }
 
   static bindEvents() {
-    // Делегування подій для дій у таблиці (кнопки харчування, редагування, видалення)
+    // Делегування дій для адмін-панелі
+    const adminTable = document.getElementById("adminUsersTable");
+    if (adminTable) {
+      adminTable.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-admin-action]");
+        if (!btn) return;
+        const action = btn.dataset.adminAction;
+        const uid = btn.dataset.uid;
+
+        if (action === "approve") UserService.approveUser(uid);
+        if (action === "delete") UserService.deleteUser(uid);
+      });
+    }
+
+    // Делегування подій для дій у основній таблиці
     const tbody = document.getElementById("tableBody");
     if (tbody) {
       tbody.addEventListener("click", (e) => {
@@ -346,7 +366,7 @@ class App {
       });
     }
 
-    // Зміна підрозділу через фільтр
+    // Фільтрація за підрозділом
     const unitSelect = document.getElementById("unitFilter");
     if (unitSelect) {
       unitSelect.addEventListener("change", (e) => {
@@ -355,7 +375,6 @@ class App {
       });
     }
 
-    // Оновлення статусу оффлайн при закритті/перезавантаженні сторінки
     window.addEventListener("beforeunload", () => {
       if (state.currentUser) {
         UserService.setUserOnlineStatus(state.currentUser.uid, false);
@@ -390,13 +409,17 @@ class App {
     let [countS, countO, countV] = [0, 0, 0];
 
     list.forEach((person, originalIndex) => {
+      const personName = person.name || person.fullName || "";
+      const personRank = person.rank || "-";
+      const personUnit = person.unit || "-";
+
       if (
         state.searchQuery &&
-        !person.name.toLowerCase().includes(state.searchQuery) &&
-        !person.unit.toLowerCase().includes(state.searchQuery)
+        !personName.toLowerCase().includes(state.searchQuery) &&
+        !personUnit.toLowerCase().includes(state.searchQuery)
       )
         return;
-      if (state.selectedUnit !== "ALL" && person.unit !== state.selectedUnit)
+      if (state.selectedUnit !== "ALL" && personUnit !== state.selectedUnit)
         return;
 
       filteredIdx++;
@@ -411,9 +434,9 @@ class App {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${filteredIdx}</td>
-        <td>${UI.escapeHtml(person.rank)}</td>
-        <td style="text-align: left; font-weight: 600;">${UI.escapeHtml(person.name)}</td>
-        <td>${UI.escapeHtml(person.unit)}</td>
+        <td>${UI.escapeHtml(personRank)}</td>
+        <td style="text-align: left; font-weight: 600;">${UI.escapeHtml(personName)}</td>
+        <td>${UI.escapeHtml(personUnit)}</td>
         <td><button class="btn-meal ${sActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="s">${sActive ? "Зарахований" : "Незарахований"}</button></td>
         <td><button class="btn-meal ${oActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="o">${oActive ? "Зарахований" : "Незарахований"}</button></td>
         <td><button class="btn-meal ${vActive ? "active" : "inactive"}" data-action="toggleMeal" data-idx="${originalIndex}" data-meal="v">${vActive ? "Зарахований" : "Незарахований"}</button></td>
@@ -451,7 +474,7 @@ class App {
 
     if (editIndexEl) editIndexEl.value = index;
     if (rankEl) rankEl.value = person.rank || "";
-    if (nameEl) nameEl.value = person.name || "";
+    if (nameEl) nameEl.value = person.name || person.fullName || "";
     if (unitEl) unitEl.value = person.unit || "";
 
     if (saveBtn) saveBtn.textContent = "Зберегти зміни";
@@ -465,7 +488,10 @@ class App {
     const list = state.getPersonnelForCurrentDate();
     if (!list[index]) return;
 
-    if (confirm(`Ви дійсно бажаєте видалити ${list[index].name}?`)) {
+    const personName =
+      list[index].name || list[index].fullName || "військовослужбовця";
+
+    if (confirm(`Ви дійсно бажаєте видалити ${personName}?`)) {
       list.splice(index, 1);
       state.setPersonnelForCurrentDate(list);
       await MealService.syncToFirestore(state.currentDate);
@@ -510,7 +536,7 @@ class App {
   }
 }
 
-// Глобальні функції
+// Глобальні функції авторизації та пошуку
 window.loginUser = async () => {
   try {
     const email = document.getElementById("authEmail").value.trim();
@@ -546,7 +572,6 @@ window.approveUser = (uid) => UserService.approveUser(uid);
 window.deleteUser = (uid) => UserService.deleteUser(uid);
 window.logout = () => AuthService.logout();
 
-// Зв'язування з HTML-подіями
 window.onDateChange = () => App.handleDateChange();
 window.toggleForm = (force) => App.toggleForm(force);
 window.promptSearch = () => {
