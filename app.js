@@ -12,6 +12,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
   onSnapshot,
   collection,
@@ -19,26 +20,23 @@ import {
 
 /**
  * КОНФІГУРАЦІЯ FIREBASE
- * Переконайтеся, що вставили ваш реальний apiKey замість тексту нижче
  */
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyAAhZnsJYbTkRPnzZfpc4Z0r2U_eEL7BFo",
+  apiKey: "AIzaSyAAhZnsJYbTkRPnzZfpc4Z0r2U_eFL7BFo",
   authDomain: "telephon-oblic-idalnya.firebaseapp.com",
   projectId: "telephon-oblic-idalnya",
   storageBucket: "telephon-oblic-idalnya.firebasestorage.app",
   messagingSenderId: "591688369928",
   appId: "1:591688369928:web:89c8ef4ccdd474573a4ebd",
-  measurementId: "G-4YY48P80V3"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-/**
- * КЛАС КЕРУВАННЯ СТАНОМ ДОДАТКУ (STATE MANAGEMENT)
- */
+// EMAIL ГОЛОВНОГО АДМІНІСТРАТОРА (Вкажіть вашу пошту)
+const ADMIN_EMAIL = "admin@gmail.com";
+
 class AppState {
   constructor() {
     this.currentUser = null;
@@ -49,6 +47,7 @@ class AppState {
     this.selectedUnit = "ALL";
     this.unsubscribeMeals = null;
     this.unsubscribeUsers = null;
+    this.unsubscribeAdminUsers = null;
   }
 
   saveLocal() {
@@ -67,11 +66,8 @@ class AppState {
 
 const state = new AppState();
 
-/**
- * ДОПОМІЖНІ МЕТОДИ ДЛЯ UI
- */
 const UI = {
-  showToast(message, type = "info") {
+  showToast(message) {
     alert(message);
   },
   toggleElement(id, show) {
@@ -92,9 +88,6 @@ const UI = {
   },
 };
 
-/**
- * СЕРВІС АВТОРИЗАЦІЇ (EMAIL / PASSWORD)
- */
 class AuthService {
   static async login(email, password) {
     if (!email || !password) throw new Error("Заповніть Email та Пароль!");
@@ -117,25 +110,49 @@ class AuthService {
     }
     if (state.unsubscribeMeals) state.unsubscribeMeals();
     if (state.unsubscribeUsers) state.unsubscribeUsers();
+    if (state.unsubscribeAdminUsers) state.unsubscribeAdminUsers();
     await signOut(auth);
     location.reload();
   }
 }
 
-/**
- * СЕРВІС КЕРУВАННЯ КОРИСТУВАЧАМИ
- */
 class UserService {
   static async checkProfile(user) {
     const userDocRef = doc(db, "users", user.uid);
     const userDoc = await getDoc(userDocRef);
 
-    if (userDoc.exists() && userDoc.data().fullName) {
+    if (userDoc.exists()) {
       state.userProfile = userDoc.data();
+
+      // Автоматичне надання прав адміна за Email
+      if (user.email === ADMIN_EMAIL && state.userProfile.role !== "admin") {
+        state.userProfile.role = "admin";
+        state.userProfile.isApproved = true;
+        await updateDoc(userDocRef, { role: "admin", isApproved: true });
+      }
+
+      // Перевірка дозволу від адміністратора
+      if (!state.userProfile.isApproved && state.userProfile.role !== "admin") {
+        UI.toggleElement("authModal", true);
+        UI.toggleElement("stepAuth", false);
+        UI.toggleElement("stepProfile", false);
+        UI.toggleElement("stepPendingApproval", true);
+        UI.toggleElement("appContent", false);
+        return;
+      }
+
       UI.toggleElement("authModal", false);
       UI.toggleElement("appContent", true);
       document.getElementById("headerUserName").textContent =
-        `${state.userProfile.rank || ""} ${state.userProfile.fullName}`;
+        `${state.userProfile.rank || ""} ${state.userProfile.fullName} (${state.userProfile.role === "admin" ? "АДМІН" : "Користувач"})`;
+
+      // Відображення панелі адміна
+      if (state.userProfile.role === "admin") {
+        UI.toggleElement("adminPanel", true);
+        this.subscribeToAllUsersForAdmin();
+      } else {
+        UI.toggleElement("adminPanel", false);
+      }
 
       await this.setUserOnlineStatus(user.uid, true);
       App.initMainView();
@@ -148,12 +165,16 @@ class UserService {
   static async saveProfile(rank, fullName, unit) {
     if (!fullName) throw new Error("Прізвище та Ініціали є обов'язковими!");
 
+    const isAdmin = state.currentUser.email === ADMIN_EMAIL;
+
     state.userProfile = {
+      uid: state.currentUser.uid,
       email: state.currentUser.email,
       rank: rank || "солдат",
       fullName,
       unit: unit || "-",
-      role: "client",
+      role: isAdmin ? "admin" : "client",
+      isApproved: isAdmin, // Адмін підтверджується одразу, інші чекають
       isOnline: true,
       lastSeen: new Date().toISOString(),
     };
@@ -161,14 +182,7 @@ class UserService {
     await setDoc(doc(db, "users", state.currentUser.uid), state.userProfile, {
       merge: true,
     });
-
-    UI.toggleElement("authModal", false);
-    UI.toggleElement("appContent", true);
-    document.getElementById("headerUserName").textContent =
-      `${state.userProfile.rank} ${state.userProfile.fullName}`;
-
-    await this.setUserOnlineStatus(state.currentUser.uid, true);
-    App.initMainView();
+    await this.checkProfile(state.currentUser);
   }
 
   static async setUserOnlineStatus(uid, isOnline) {
@@ -176,40 +190,51 @@ class UserService {
       const userRef = doc(db, "users", uid);
       await updateDoc(userRef, { isOnline, lastSeen: serverTimestamp() });
     } catch (e) {
-      console.error("Помилка оновлення статусу:", e);
+      console.error("Помилка статусу:", e);
     }
   }
 
-  static subscribeToOnlineUsers() {
+  // Для адміністратора: список усіх користувачів із кнопками керування
+  static subscribeToAllUsersForAdmin() {
     const usersRef = collection(db, "users");
-    state.unsubscribeUsers = onSnapshot(usersRef, (snapshot) => {
-      const listEl = document.getElementById("onlineUsersList");
-      const countEl = document.getElementById("onlineCount");
-      if (!listEl) return;
+    state.unsubscribeAdminUsers = onSnapshot(usersRef, (snapshot) => {
+      const adminTable = document.getElementById("adminUsersTable");
+      if (!adminTable) return;
 
-      listEl.innerHTML = "";
-      let onlineCount = 0;
-
+      adminTable.innerHTML = "";
       snapshot.forEach((docSnap) => {
-        const userData = docSnap.data();
-        if (userData.isOnline) onlineCount++;
+        const u = docSnap.data();
+        if (u.uid === state.currentUser.uid) return; // Не показувати самого себе
 
-        const userRow = document.createElement("div");
-        userRow.className = "online-user-item";
-        userRow.innerHTML = `
-          <span>${userData.isOnline ? "🟢" : "🔴"} <strong>${UI.escapeHtml(userData.rank)} ${UI.escapeHtml(userData.fullName)}</strong> (${UI.escapeHtml(userData.unit)})</span>
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${UI.escapeHtml(u.rank)} ${UI.escapeHtml(u.fullName)}</td>
+          <td>${UI.escapeHtml(u.email)}</td>
+          <td>${UI.escapeHtml(u.unit)}</td>
+          <td>${u.isApproved ? "🟢 Дозволено" : "⏳ Очікує"}</td>
+          <td>
+            ${!u.isApproved ? `<button class="btn btn-sm btn-success" onclick="approveUser('${u.uid}')">Надати дозвіл</button>` : ""}
+            <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.uid}')">Видалити</button>
+          </td>
         `;
-        listEl.appendChild(userRow);
+        adminTable.appendChild(tr);
       });
-
-      if (countEl) countEl.innerText = onlineCount;
     });
+  }
+
+  static async approveUser(uid) {
+    await updateDoc(doc(db, "users", uid), { isApproved: true });
+    UI.showToast("Доступ користувачу надано!");
+  }
+
+  static async deleteUser(uid) {
+    if (confirm("Ви дійсно бажаєте видалити цього користувача з системи?")) {
+      await deleteDoc(doc(db, "users", uid));
+      UI.showToast("Користувача видалено!");
+    }
   }
 }
 
-/**
- * СЕРВІС ОБЛІКУ ХАРЧУВАННЯ
- */
 class MealService {
   static subscribeToMeals(dateStr, callback) {
     if (state.unsubscribeMeals) state.unsubscribeMeals();
@@ -264,14 +289,11 @@ class MealService {
         { merge: true },
       );
     } catch (err) {
-      console.error("Помилка збереження в Firestore:", err);
+      console.error("Помилка збереження:", err);
     }
   }
 }
 
-/**
- * ГОЛОВНИЙ КОНТРОЛЕР ДОДАТКУ
- */
 class App {
   static init() {
     this.bindEvents();
@@ -279,9 +301,11 @@ class App {
       if (user) {
         state.currentUser = user;
         await UserService.checkProfile(user);
-        UserService.subscribeToOnlineUsers();
       } else {
         UI.toggleElement("authModal", true);
+        UI.toggleElement("stepAuth", true);
+        UI.toggleElement("stepProfile", false);
+        UI.toggleElement("stepPendingApproval", false);
         UI.toggleElement("appContent", false);
       }
     });
@@ -316,7 +340,6 @@ class App {
 
     tbody.innerHTML = "";
     const list = [...state.getPersonnelForCurrentDate()];
-
     list.sort((a, b) => (a.unit || "").localeCompare(b.unit || "", "uk"));
 
     let filteredIdx = 0;
@@ -386,14 +409,14 @@ class App {
   }
 }
 
-// Глобальні обробники дій
+// Глобальні функції
 window.loginUser = async () => {
   try {
     const email = document.getElementById("authEmail").value.trim();
     const pass = document.getElementById("authPassword").value.trim();
     await AuthService.login(email, pass);
   } catch (err) {
-    UI.showToast(err.message, "error");
+    UI.showToast(err.message);
   }
 };
 
@@ -403,7 +426,7 @@ window.registerUser = async () => {
     const pass = document.getElementById("authPassword").value.trim();
     await AuthService.register(email, pass);
   } catch (err) {
-    UI.showToast(err.message, "error");
+    UI.showToast(err.message);
   }
 };
 
@@ -414,23 +437,12 @@ window.saveProfile = async () => {
     const unit = document.getElementById("userUnit").value.trim();
     await UserService.saveProfile(rank, fullName, unit);
   } catch (err) {
-    UI.showToast(err.message, "error");
+    UI.showToast(err.message);
   }
 };
 
+window.approveUser = (uid) => UserService.approveUser(uid);
+window.deleteUser = (uid) => UserService.deleteUser(uid);
 window.logout = () => AuthService.logout();
-window.onDateChange = () => App.handleDateChange();
 
-window.toggleMeal = (index, mealType) => {
-  const list = state.getPersonnelForCurrentDate();
-  if (list[index]) {
-    list[index][mealType] =
-      list[index][mealType] === "Зарахувати" ? "Не зараховувати" : "Зарахувати";
-    state.saveLocal();
-    MealService.syncToFirestore(state.currentDate);
-    App.renderTable();
-  }
-};
-
-// Запуск після завантаження DOM
 document.addEventListener("DOMContentLoaded", () => App.init());

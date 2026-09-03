@@ -10,36 +10,45 @@
 </head> 
 <body>
 
-  <!-- МОДАЛЬНЕ ВІКНО АВТОРИЗАЦІЇ ТА ПРОФІЛЬ -->
+  <!-- МОДАЛЬНЕ ВІКНО АВТОРИЗАЦІЇ ТА ПРОФІЛЮ -->
   <div id="authModal" class="modal" style="display: flex;">
-  <div class="modal-content">
-    
-    <!-- Крок 1: Вхід або Реєстрація -->
-    <div id="stepAuth">
-      <h3>🔐 Вхід у систему</h3>
-      <input type="email" id="authEmail" placeholder="Електронна пошта (email)" class="form-input" style="margin-bottom: 10px; width: 100%;">
-      <input type="password" id="authPassword" placeholder="Пароль (від 6 символів)" class="form-input" style="margin-bottom: 15px; width: 100%;">
+    <div class="modal-content">
       
-      <div style="display: flex; gap: 10px;">
-        <button onclick="loginUser()" class="btn btn-primary" style="flex: 1;">Увійти</button>
-        <button onclick="registerUser()" class="btn btn-secondary" style="flex: 1;">Зареєструватися</button>
+      <!-- Крок 1: Вхід або Реєстрація -->
+      <div id="stepAuth">
+        <h3 style="margin-bottom: 15px; text-align: center;">🔐 Вхід у систему</h3>
+        <input type="email" id="authEmail" placeholder="Електронна пошта (email)" class="form-input" style="margin-bottom: 10px; width: 100%;">
+        <input type="password" id="authPassword" placeholder="Пароль (від 6 символів)" class="form-input" style="margin-bottom: 15px; width: 100%;">
+        
+        <div style="display: flex; gap: 10px;">
+          <button onclick="loginUser()" class="btn btn-primary" style="flex: 1;">Увійти</button>
+          <button onclick="registerUser()" class="btn btn-secondary" style="flex: 1;">Зареєструватися</button>
+        </div>
       </div>
-    </div>
 
-    <!-- Крок 2: Заповнення профілю після реєстрації -->
-    <div id="stepProfile" style="display: none;">
-      <h3>👤 Профіль користувача</h3>
-      <input type="text" id="userRank" placeholder="Військове звання" class="form-input" style="margin-bottom: 10px; width: 100%;">
-      <input type="text" id="userFullName" placeholder="Прізвище та Ініціали *" class="form-input" style="margin-bottom: 10px; width: 100%;">
-      <input type="text" id="userUnit" placeholder="Підрозділ / Рота" class="form-input" style="margin-bottom: 15px; width: 100%;">
-      <button onclick="saveProfile()" class="btn btn-primary" style="width: 100%;">Зберегти та увійти</button>
-    </div>
+      <!-- Крок 2: Заповнення профілю після реєстрації -->
+      <div id="stepProfile" style="display: none;">
+        <h3 style="margin-bottom: 15px; text-align: center;">👤 Профіль користувача</h3>
+        <input type="text" id="userRank" placeholder="Військове звання" class="form-input" style="margin-bottom: 10px; width: 100%;">
+        <input type="text" id="userFullName" placeholder="Прізвище та Ініціали *" class="form-input" style="margin-bottom: 10px; width: 100%;">
+        <input type="text" id="userUnit" placeholder="Підрозділ / Рота" class="form-input" style="margin-bottom: 15px; width: 100%;">
+        <button onclick="saveProfile()" class="btn btn-primary" style="width: 100%;">Зберегти та увійти</button>
+      </div>
 
+      <!-- Крок 3: Очікування підтвердження від Адміністратора -->
+      <div id="stepPendingApproval" style="display: none; text-align: center;">
+        <h3 style="margin-bottom: 15px;">⏳ Заявка відправлена</h3>
+        <p style="color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">
+          Ваш акаунт зареєстровано. Зачекайте, поки <strong>Адміністратор</strong> надасть вам дозвіл для входу в систему.
+        </p>
+        <button onclick="logout()" class="btn btn-danger" style="width: 100%;">Вийти</button>
+      </div>
+
+    </div>
   </div>
-</div>
 
   <!-- ОСНОВНИЙ КОНТЕНТ ДОДАТКУ -->
-  <div id="appContent" style="display: none;">
+  <div id="appContent" class="container" style="display: none;">
     
     <header class="header-container">
       <div class="trident">🔱</div>
@@ -49,6 +58,25 @@
         <button class="btn-logout" onclick="logout()">Вийти</button>
       </div>
     </header>
+
+    <!-- Панель Адміністратора -->
+    <div id="adminPanel" class="admin-panel" style="display: none;">
+      <h3 style="color: var(--warning-color);">🛠️ Панель керування користувачами (Адміністратор)</h3>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Користувач</th>
+            <th>Email</th>
+            <th>Підрозділ</th>
+            <th>Статус</th>
+            <th>Дії</th>
+          </tr>
+        </thead>
+        <tbody id="adminUsersTable">
+          <!-- Заповнюється динамічно через app.js -->
+        </tbody>
+      </table>
+    </div>
 
     <!-- Панель користувачів онлайн -->
     <div class="card">
