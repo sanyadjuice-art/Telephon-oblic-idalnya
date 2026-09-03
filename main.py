@@ -1,6 +1,5 @@
-import os
-import re
 import io
+import re
 import pdfplumber
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,7 +7,6 @@ from fastapi.responses import JSONResponse
 
 app = FastAPI()
 
-# Дозволяємо крос-доменні запити
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,7 +17,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"status": "ok"}
+    return {"status": "ok", "message": "Python PDF Parser is running"}
 
 @app.post("/parse-pdf")
 async def parse_pdf(file: UploadFile = File(...)):
@@ -32,6 +30,7 @@ async def parse_pdf(file: UploadFile = File(...)):
             for page in pdf.pages:
                 text = page.extract_text() or ""
                 
+                # Пошук дати
                 date_match = re.search(r'«?(\d{1,2})»?\s+([а-яА-Яа-щШЩЬЮЯєЇїІіґҐ]+)\s+(\d{4})', text)
                 if date_match:
                     months = {
@@ -43,6 +42,7 @@ async def parse_pdf(file: UploadFile = File(...)):
                     year = date_match.group(3)
                     extracted_date = f"{year}-{month}-{day}"
 
+                # Витягування таблиць через pdfplumber
                 tables = page.extract_tables()
                 for table in tables:
                     for row in table:
@@ -54,6 +54,8 @@ async def parse_pdf(file: UploadFile = File(...)):
                             continue
 
                         fio = str(row[1]).replace('\n', ' ').strip() if row[1] else ""
+                        if not fio or "осіб, а саме" in fio.lower() or "прізвище" in fio.lower():
+                            continue
                         
                         s_status = "Зарахувати" if "зарахувати" in str(row[2]).lower() and "не" not in str(row[2]).lower() else "Не зараховувати"
                         o_status = "Зарахувати" if "зарахувати" in str(row[3]).lower() and "не" not in str(row[3]).lower() else "Не зараховувати"
@@ -68,6 +70,26 @@ async def parse_pdf(file: UploadFile = File(...)):
                             "v": v_status
                         })
 
-        return JSONResponse(content={"date": extracted_date, "personnel": records})
+        # Обробка дублікатів та сортування на стороні Python
+        unique_records_map = {}
+        duplicates = []
+
+        for item in records:
+            name_key = item["name"].lower()
+            if name_key in unique_records_map:
+                duplicates.append(item["name"])
+            unique_records_map[name_key] = item  # Перезапис оновлює статус, але виключає дубль
+
+        final_records = list(unique_records_map.values())
+        
+        # Сортування в алфавітному порядку за ПІБ
+        final_records.sort(key=lambda x: x["name"].lower())
+
+        return JSONResponse(content={
+            "date": extracted_date,
+            "personnel": final_records,
+            "duplicates": list(set(duplicates))
+        })
+        
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
