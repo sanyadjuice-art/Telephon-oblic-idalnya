@@ -18,9 +18,6 @@ import {
   collection,
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-/**
- * КОНФІГУРАЦІЯ FIREBASE
- */
 const firebaseConfig = {
   apiKey: "AIzaSyAAhZnsJYbTkRPnzZfpc4Z0r2U_eEL7BFo",
   authDomain: "telephon-oblic-idalnya.firebaseapp.com",
@@ -155,6 +152,7 @@ class UserService {
         UI.toggleElement("adminPanel", false);
       }
 
+      this.subscribeToOnlineUsers();
       await this.setUserOnlineStatus(user.uid, true);
       App.initMainView();
     } else {
@@ -193,6 +191,29 @@ class UserService {
     } catch (e) {
       console.error("Помилка статусу:", e);
     }
+  }
+
+  static subscribeToOnlineUsers() {
+    const usersRef = collection(db, "users");
+    state.unsubscribeUsers = onSnapshot(usersRef, (snapshot) => {
+      const listEl = document.getElementById("onlineUsersList");
+      const countEl = document.getElementById("onlineCount");
+      if (!listEl) return;
+
+      let count = 0;
+      listEl.innerHTML = "";
+      snapshot.forEach((docSnap) => {
+        const u = docSnap.data();
+        if (u.isOnline) {
+          count++;
+          const item = document.createElement("div");
+          item.style.padding = "2px 0";
+          item.innerHTML = `🟢 ${UI.escapeHtml(u.rank)} ${UI.escapeHtml(u.fullName)} (${UI.escapeHtml(u.unit)})`;
+          listEl.appendChild(item);
+        }
+      });
+      if (countEl) countEl.innerText = count;
+    });
   }
 
   static subscribeToAllUsersForAdmin() {
@@ -239,9 +260,7 @@ class UserService {
         UI.showToast("Профіль користувача успішно видалено з Firestore!");
       } catch (e) {
         console.error("Помилка при видаленні:", e);
-        UI.showToast(
-          "Помилка видалення! Перевірте правила безпеки Firestore (Security Rules).",
-        );
+        UI.showToast("Помилка видалення!");
       }
     }
   }
@@ -275,17 +294,6 @@ class MealService {
         o: "Не зараховувати",
         v: "Не зараховувати",
       }));
-    } else {
-      initialData = [
-        {
-          rank: "солдат",
-          name: "Іваненко І.І.",
-          unit: "1-ша рота",
-          s: "Не зараховувати",
-          o: "Не зараховувати",
-          v: "Не зараховувати",
-        },
-      ];
     }
     state.setPersonnelForCurrentDate(initialData);
     this.syncToFirestore(dateStr);
@@ -326,7 +334,6 @@ class App {
   }
 
   static bindEvents() {
-    // Делегування подій для дій у таблиці харчування
     const tbody = document.getElementById("tableBody");
     if (tbody) {
       tbody.addEventListener("click", (e) => {
@@ -356,7 +363,6 @@ class App {
       });
     }
 
-    // Зміна значення у фільтрі
     const unitSelect = document.getElementById("unitFilter");
     if (unitSelect) {
       unitSelect.addEventListener("change", (e) => {
@@ -447,6 +453,10 @@ class App {
     if (totalB) totalB.innerText = countS;
     if (totalL) totalL.innerText = countO;
     if (totalD) totalD.innerText = countV;
+
+    const resetBtn = document.getElementById("resetSearchBtn");
+    if (resetBtn)
+      resetBtn.style.display = state.searchQuery ? "inline-block" : "none";
   }
 
   static editPerson(index) {
@@ -472,6 +482,66 @@ class App {
     if (formTitle) formTitle.textContent = "✏️ Редагувати військовослужбовця";
 
     App.toggleForm(true);
+  }
+
+  static async savePerson() {
+    const editIndexEl = document.getElementById("editIndex");
+    const rankEl = document.getElementById("newRank");
+    const nameEl = document.getElementById("newName");
+    const unitEl = document.getElementById("newUnit");
+
+    const idx = parseInt(editIndexEl.value, 10);
+    const name = nameEl.value.trim();
+    const rank = rankEl.value.trim() || "солдат";
+    const unit = unitEl.value.trim() || "-";
+
+    if (!name) {
+      UI.showToast("Вкажіть Прізвище та ініціали!");
+      return;
+    }
+
+    const list = state.getPersonnelForCurrentDate();
+
+    if (idx >= 0 && list[idx]) {
+      list[idx].name = name;
+      list[idx].rank = rank;
+      list[idx].unit = unit;
+    } else {
+      list.push({
+        rank,
+        name,
+        unit,
+        s: "Не зараховувати",
+        o: "Не зараховувати",
+        v: "Не зараховувати",
+      });
+    }
+
+    state.setPersonnelForCurrentDate(list);
+    await MealService.syncToFirestore(state.currentDate);
+    App.resetForm();
+    App.updateUnitFilterOptions();
+    App.renderTable();
+  }
+
+  static resetForm() {
+    const editIndexEl = document.getElementById("editIndex");
+    const rankEl = document.getElementById("newRank");
+    const nameEl = document.getElementById("newName");
+    const unitEl = document.getElementById("newUnit");
+    const saveBtn = document.getElementById("saveBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
+    const formTitle = document.getElementById("formTitle");
+
+    if (editIndexEl) editIndexEl.value = "-1";
+    if (rankEl) rankEl.value = "";
+    if (nameEl) nameEl.value = "";
+    if (unitEl) unitEl.value = "";
+
+    if (saveBtn) saveBtn.textContent = "Додати до списку";
+    if (cancelBtn) cancelBtn.style.display = "none";
+    if (formTitle)
+      formTitle.textContent = "➕ Додати нового військовослужбовця";
   }
 
   static async removePerson(index) {
@@ -526,7 +596,7 @@ class App {
   }
 }
 
-// Реєстрація глобальних функцій у window для обробки атрибутів onclick=""
+// Глобальні функції для прив'язки до HTML
 window.loginUser = async () => {
   try {
     const email = document.getElementById("authEmail").value.trim();
@@ -564,6 +634,22 @@ window.logout = () => AuthService.logout();
 
 window.onDateChange = () => App.handleDateChange();
 window.toggleForm = (force) => App.toggleForm(force);
+window.savePerson = () => App.savePerson();
+window.resetForm = () => App.resetForm();
+
+window.toggleOnlinePanel = () => {
+  const list = document.getElementById("onlineUsersList");
+  const icon = document.getElementById("onlineToggleIcon");
+  if (!list) return;
+  if (list.style.display === "none") {
+    list.style.display = "block";
+    if (icon) icon.innerText = "➖";
+  } else {
+    list.style.display = "none";
+    if (icon) icon.innerText = "➕";
+  }
+};
+
 window.promptSearch = () => {
   const q = prompt("Введіть текст для пошуку:");
   if (q !== null) {
@@ -571,131 +657,59 @@ window.promptSearch = () => {
     App.renderTable();
   }
 };
+
 window.resetSearch = () => {
   state.searchQuery = "";
   App.renderTable();
 };
 
-document.addEventListener("DOMContentLoaded", () => App.init());
+window.exportToExcel = () => {
+  if (typeof XLSX === "undefined") {
+    UI.showToast("Бібліотека XLSX не завантажена!");
+    return;
+  }
+  const data = state.getPersonnelForCurrentDate().map((p, idx) => ({
+    "№": idx + 1,
+    Звання: p.rank || "-",
+    ПІБ: p.name || p.fullName || "-",
+    Підрозділ: p.unit || "-",
+    Сніданок: p.s || "Не зараховувати",
+    Обід: p.o || "Не зараховувати",
+    Вечеря: p.v || "Не зараховувати",
+  }));
 
-// Налаштування воркера PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Звіт");
+  XLSX.writeFile(workbook, `Харчування_${state.currentDate}.xlsx`);
+};
 
-/**
- * Обробник вибору PDF-файлу
- */
-async function handlePDFUpload(event) {
+window.handlePDFUpload = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
+
+  if (typeof pdfjsLib === "undefined") {
+    UI.showToast("Бібліотека PDF.js не завантажена!");
+    return;
+  }
 
   try {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     let fullText = "";
 
-    // Зчитуємо текст з усіх сторінок PDF
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
       const pageText = textContent.items.map((item) => item.str).join(" ");
       fullText += pageText + "\n";
     }
 
-    // Передаємо витягнутий текст на обробку
-    processApplicationText(fullText);
-
-    // Очищаємо інпут, щоб можна було завантажити той самий файл повторно
-    event.target.value = "";
-  } catch (error) {
-    console.error("Помилка зчитування PDF:", error);
-    UI.showToast("Помилка при зчитуванні PDF-файлу!");
+    UI.showToast("PDF успішно зчитано! Оброблено сторінок: " + pdf.numPages);
+  } catch (err) {
+    console.error("Помилка зчитування PDF:", err);
+    UI.showToast("Не вдалося розпізнати PDF-файл.");
   }
-}
+};
 
-/**
- * Парсинг тексту заявки, визначення підрозділу та перевірка на повторення
- */
-function processApplicationText(textContent) {
-  // 1. Автоматичне визначення підрозділу з тексту заявки
-  let detectedUnit = "Заявка";
-  if (
-    textContent.includes("відділу спеціальних дій") ||
-    textContent.includes("ВСД")
-  ) {
-    detectedUnit = "ВСД";
-  } else if (
-    textContent.includes("1-ша рота") ||
-    textContent.includes("1 рота")
-  ) {
-    detectedUnit = "1-ша рота";
-  }
-
-  const currentList = state.getPersonnelForCurrentDate();
-  let addedCount = 0;
-  let updatedCount = 0;
-
-  // 2. Регулярний вираз для пошуку рядків таблиці
-  // Шукає структуру: Номер. | Звання | ПІБ | Сніданок | Обід | Вечеря
-  const personRegex =
-    /\d+\.\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|\n]+)/g;
-  let match;
-
-  while ((match = personRegex.exec(textContent)) !== null) {
-    const rank = match[1].trim();
-    const name = match[2].trim();
-    const s = match[3].trim().toLowerCase().includes("зараховано")
-      ? "Зарахувати"
-      : "Не зараховувати";
-    const o = match[4].trim().toLowerCase().includes("зараховано")
-      ? "Зарахувати"
-      : "Не зараховувати";
-    const v = match[5].trim().toLowerCase().includes("зараховано")
-      ? "Зарахувати"
-      : "Не зараховувати";
-
-    // 3. Перевірка на повторення (дублікати) за ПІБ
-    const existingIndex = currentList.findIndex(
-      (p) => (p.name || p.fullName || "").toLowerCase() === name.toLowerCase(),
-    );
-
-    if (existingIndex !== -1) {
-      // Якщо військовослужбовець вже є — оновлюємо його підрозділ та статуси
-      currentList[existingIndex].rank = rank;
-      currentList[existingIndex].unit = detectedUnit;
-      currentList[existingIndex].s = s;
-      currentList[existingIndex].o = o;
-      currentList[existingIndex].v = v;
-      updatedCount++;
-    } else {
-      // Якщо немає — додаємо нового
-      currentList.push({
-        rank: rank,
-        name: name,
-        unit: detectedUnit,
-        s: s,
-        o: o,
-        v: v,
-      });
-      addedCount++;
-    }
-  }
-
-  if (addedCount === 0 && updatedCount === 0) {
-    UI.showToast("Не вдалося знайти табличні дані у завантаженому PDF!");
-    return;
-  }
-
-  // Збереження оновлених даних та синхронізація з Firestore
-  state.setPersonnelForCurrentDate(currentList);
-  MealService.syncToFirestore(state.currentDate);
-  App.updateUnitFilterOptions();
-  App.renderTable();
-
-  UI.showToast(
-    `Заявку успішно опрацьовано!\n• Додано нових: ${addedCount}\n• Оновлено існуючих: ${updatedCount}`,
-  );
-}
-
-// Реєструємо функцію у global window для доступу з HTML
-window.handlePDFUpload = handlePDFUpload;
+document.addEventListener("DOMContentLoaded", () => App.init());
