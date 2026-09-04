@@ -32,7 +32,8 @@ async def parse_pdf(file: UploadFile = File(...)):
         extracted_date = ""
 
         # Передаємо виключно bytes всередину BytesIO
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        pdf_stream = io.BytesIO(pdf_bytes)
+        with pdfplumber.PDF(pdf_stream) as pdf:
             for page in pdf.pages:
                 text = page.extract_text() or ""
                 
