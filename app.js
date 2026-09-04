@@ -726,17 +726,16 @@ window.handlePDFUpload = async (event) => {
   if (!file) return;
 
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", file); // Ключ "file" має точно збігатися з аргументом у FastAPI: def parse_pdf(file: UploadFile = File(...))
 
   UI.showToast("Обробка PDF через Python-сервер...");
 
   try {
-    // Замініть URL на адресу вашого сервера (наприклад, ваш бекенд на Render або локальний http://127.0.0.1:8000/parse-pdf)
     const response = await fetch(
       "https://pdf-parser-dcq3.onrender.com/parse-pdf",
       {
         method: "POST",
-        body: formData,
+        body: formData, // НЕ вказуйте заголовки вручну! Браузер сам додасть boundary.
       },
     );
 
