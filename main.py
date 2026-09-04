@@ -92,4 +92,6 @@ async def parse_pdf(file: UploadFile = File(...)):
         })
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # Це виведе повний текст помилки у логи Render
         return JSONResponse(content={"error": str(e)}, status_code=500)
